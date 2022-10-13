@@ -2,7 +2,9 @@
 
 import numpy as np
 from autograd import grad
+from autograd import elementwise_grad as egrad
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 class FokkerPlanckEquation:
     """
@@ -42,28 +44,31 @@ class FokkerPlanckEquation:
         h_x = self.X/N_x
         h_t = self.T/N_t 
 
-        G_x = grad(self.G)
-        alpha_x = grad(self.alpha)
+        G_x = egrad(self.G)
+        alpha_x = egrad(self.alpha)
         V_x = lambda x,t: G_x(x) + alpha_x(x) * self.u(t)
-        G_xx = grad(G_x)
-        alpha_xx = grad(alpha_x)
+        G_xx = egrad(G_x)
+        alpha_xx = egrad(alpha_x)
         V_xx = lambda x,t: G_xx(x) + alpha_xx(x) * self.u(t)
-        
-        V_x_matrix = [[h_t/(2*h_x) * V_x(self.lb + j*h_x, i*h_t) for j in range(1,N_x)] for i in range(N_t)]
-        V_xx_matrix = [[h_t * V_xx(self.lb + j*h_x, i*h_t) for j in range(1,N_x)] for i in range(N_t)]     
+
+        x_var = np.arange(self.lb, self.lb+self.X+0.99*h_x, h_x)
+        t_var = np.arange(0, self.T, h_t)
+        X_var, T_var = np.meshgrid(x_var[1:-1], t_var)
+        V_x_matrix = h_t/(2*h_x) * V_x(X_var, T_var)
+        V_xx_matrix = h_t * V_xx(X_var, T_var)
         if self.v != 0:
-            V_x_border = [[h_x/self.v * V_x(self.lb, i*h_t), h_x/self.v * V_x(self.ub, i*h_t)] for i in range(1,N_t+1)]
+            V_x_border = h_x/self.v * V_x(*np.meshgrid([self.lb, self.ub], t_var+h_t))
         else:
             V_x_border = None
         coef1 = self.v*h_t/h_x**2
         coef2 = 1-2*self.v*h_t/h_x**2
 
-        A = np.array([[coef1 + V_x_matrix[i][j] for j in range(N_x-1)] for i in range(N_t)])
-        B = np.array([[coef2 + V_xx_matrix[i][j] for j in range(N_x-1)] for i in range(N_t)])
-        C = np.array([[coef1 - V_x_matrix[i][j] for j in range(N_x-1)] for i in range(N_t)])
+        A = coef1 + V_x_matrix
+        B = coef2 + V_xx_matrix
+        C = coef1 - V_x_matrix
 
-        rho_0 = [self.p0(self.lb + j*h_x) for j in range(N_x+1)]
-
+        rho_0 = self.p0(x_var)
+        
         return A, B, C, rho_0, V_x_border
 
     def solve1d(self, N_x, N_t):
@@ -73,10 +78,10 @@ class FokkerPlanckEquation:
         A, B, C, rho_0, V_x_border = self._pre_calculations_1d(N_x, N_t)
         rho = np.zeros((N_t+1, N_x+1))
         rho[0,:] = rho_0
-        for i in range(N_t):
+        for i in tqdm(range(N_t)):
             rho[i+1,1:N_x] = C[i,:]*rho[i,0:N_x-1] + B[i,:]*rho[i,1:N_x] + A[i,:]*rho[i,2:N_x+1]
-            rho[i+1,0] = 0#rho[i+1,1]/(1 - V_x_border[i][0])
-            rho[i+1,N_x] = 0#rho[i+1,N_x-1]*(1 - V_x_border[i][1])
+            rho[i+1,0] = rho[i+1,1]/(1 - V_x_border[i][0])
+            rho[i+1,N_x] = rho[i+1,N_x-1]*(1 - V_x_border[i][1])
         return rho
 
 if __name__ == '__main__':
@@ -84,24 +89,29 @@ if __name__ == '__main__':
     G_func = lambda x: x*x
     alpha_func = lambda x: 1.0
     control = lambda t: 0.0
-    p_0 = lambda x: x*(1-x)
+    p_0 = lambda x: 6*x*(1-x)
     interval = [0.0,1.0]
-    parameters = {'v': 0.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 1.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
-    solving = FP_equation.solve1d(N_x=30, N_t=2000)
+    solving = FP_equation.solve1d(N_x=100, N_t=30000)
 
-    x = np.linspace(0, 1, 31)
-    t = np.linspace(0, 1, 2001)
+    x = np.linspace(0, 1, 101)
+    t = np.linspace(0, 1, 30001)
     X, T = np.meshgrid(x,t)
 
-    fig = plt.figure()
-    ax = plt.axes(projection='3d')
-    ax.plot_surface(X, T, solving)
-    ax.set_xlabel('x')
-    ax.set_ylabel('t')
-    ax.set_zlabel('rho')
-    plt.show() 
+    # Plotting the 3d figure
+    # ax = plt.axes(projection='3d')
+    # ax.plot_surface(X, T, solving)
+    # ax.set_xlabel('x')
+    # ax.set_ylabel('t')
+    # ax.set_zlabel('rho')
+    # plt.show() 
+
+    # Plotting the integral of x-axis for each time
+    plt.plot(t, solving.sum(axis=1)/100)
+    plt.ylim(0, 2)
+    plt.show()
 
         
