@@ -1,0 +1,63 @@
+\documentclass[12pt]{article}
+
+\usepackage[english]{babel}
+\usepackage[left=3cm, right=3cm, top=3cm, bottom=3cm]{geometry}
+\usepackage{setspace}
+
+\usepackage{amsmath, amssymb, amsfonts, amsthm}
+\usepackage{graphicx, float}
+\usepackage{hyperref}
+
+\title{Fokker-Plank equation}
+\author{Lucas Moschen}
+\date{Abril de 2021}
+
+% mathematical definitions 
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+
+\newtheorem{theorem}{Theorem}[subsection]
+\newtheorem{proposition}{Proposition}[subsection]
+\newtheorem{remark}{Remark}[subsection]
+\theoremstyle{definition}
+\newtheorem{example}{Example}[subsection]
+\newtheorem{definition}{Definition}[subsection]
+
+% other
+\newcommand{\sskip}{\vspace{5mm}}
+
+\begin{document}
+
+\maketitle
+
+\onehalfspacing{}
+    
+\begin{abstract}
+    This text aims to summarise the content studied during the period in the Department of Mathematics at Imperial College London with professor Dante Kalise.
+    The object of study is the Fokker-Planck equation and Optimal Control.
+\end{abstract}
+
+\tableofcontents
+
+\section*{Notation}
+
+This list is part of the notation we use throughout the text:
+
+\begin{itemize}
+    \item $\langle X \rangle = \mathbb{E}[X]$ is the expected value of the random variable $X$.
+\end{itemize}
+
+\section{Stochastic Differential Equations}
+\input{sde.tex}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                 Bibliografia                %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{thebibliography}{9}
+    \bibitem{main-book}
+
+\end{thebibliography}
+
+
+\end{document}

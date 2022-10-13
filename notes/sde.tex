@@ -1,0 +1,51 @@
+The most used Langevin equation is of the form
+\[
+\frac{dx}{dt} = a(x,t) + b(x,t) \xi(t),    
+\]
+where $\xi(t)$ is a random term.
+We suppose that for $t \neq t'$, $\xi(t)$ and $\xi(t')$ are independent.
+It is also assumed that $\langle \xi(t) \rangle = 0$.
+This is not restrictive since $a(x,t)$ can incorporate the mean of $\xi(t)$.
+Finally, we require that $\xi(t)$ has infinity variance.
+The problem with this choice is the discontinuities of $dx/dt$.
+Let 
+\[
+u(t) = \int_0^t  \xi(s) \, ds 
+\]
+and suppose that $u$ is a continuous function. 
+This implies that $u$ is a Markov Process.
+Notice that 
+\[
+\langle u(t + \Delta t) - u_0 | [u_0, t] \rangle = \langle \int_t^{t + \Delta t} \xi(s) \, ds \rangle = 0
+\]
+and 
+\[
+\langle {[u(t + \Delta t) - u_0]}^2 | [u_0, t] \rangle =  
+\]
+
+TOFINISH
+
+\subsection{Stochastic Integration}
+
+Suppose $G$ is an arbitrary function and $W(t)$ is a Wiener process.
+The stochastic integral
+\[
+I := \int_{t_0}^t G(s) dW(s)    
+\] 
+is a kind of Riemann-Stieltjes integral. 
+More specifically, consider the sum
+\[
+S_n = \sum_{i=1}^n G(\tau_i)[W(t_i) - W(t{i-1})], 
+\]
+with $t_0 \le t_1 \le \dots \le t_{n-1} \le t$ and $\tau_i \in [t_{i-1}, t_i]$,
+The convergence of $S_n$, as this, depends on the choice of the values of $\tau_i$.
+By this reason, we specify that $\tau_i = t_{i-1}$ leading to the {\em Itô Stochastic Integral}.
+
+\begin{remark}
+    The limit taken for $S_n$ is the mean square limit, that is, we want that 
+    \[
+    \lim_{n \to \infty} \langle {(S_n - I)}^2 \rangle = 0.
+    \]
+\end{remark}
+
+An alternative definition comes from {\em Stratonovich}.
