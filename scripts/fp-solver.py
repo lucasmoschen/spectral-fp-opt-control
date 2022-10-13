@@ -75,8 +75,8 @@ class FokkerPlanckEquation:
         rho[0,:] = rho_0
         for i in range(N_t):
             rho[i+1,1:N_x] = C[i,:]*rho[i,0:N_x-1] + B[i,:]*rho[i,1:N_x] + A[i,:]*rho[i,2:N_x+1]
-            rho[i+1,0] = rho[i+1,1]/(1 - V_x_border[i][0])
-            rho[i+1,N_x] = rho[i+1,N_x-1]*(1 - V_x_border[i][1])
+            rho[i+1,0] = 0#rho[i+1,1]/(1 - V_x_border[i][0])
+            rho[i+1,N_x] = 0#rho[i+1,N_x-1]*(1 - V_x_border[i][1])
         return rho
 
 if __name__ == '__main__':
@@ -85,25 +85,23 @@ if __name__ == '__main__':
     alpha_func = lambda x: 1.0
     control = lambda t: 0.0
     p_0 = lambda x: x*(1-x)
-    interval = [0,1]
-    parameters = {'v': 0.0, 'T': 1, 'p_0': p_0, 'interval': [0,1]}
+    interval = [0.0,1.0]
+    parameters = {'v': 0.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
-    solving = FP_equation.solve1d(N_x=100, N_t=50)
+    solving = FP_equation.solve1d(N_x=30, N_t=2000)
 
-    x = np.linspace(0, 1, 101)
-    t = np.linspace(0, 1, 51)
+    x = np.linspace(0, 1, 31)
+    t = np.linspace(0, 1, 2001)
     X, T = np.meshgrid(x,t)
-    
+
     fig = plt.figure()
     ax = plt.axes(projection='3d')
     ax.plot_surface(X, T, solving)
-    ax.plot_surface(X, T, solving2)
     ax.set_xlabel('x')
     ax.set_ylabel('t')
     ax.set_zlabel('rho')
-    ax.set_zlim(0,2)
     plt.show() 
 
         
