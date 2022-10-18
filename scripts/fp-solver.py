@@ -123,10 +123,15 @@ class FokkerPlanckEquation:
         derivatives = lambda n: grad(lambda x: family(x,n))
         for i in range(n_f):
             for j in range(n_f):
-                A[i,j] = quad(func=lambda x: family(x,i) * family(x,j), a=self.lb, b=self.ub)[0]
-                B[i,j] = -self.v * quad(func=lambda x: (derivatives(i))(x) * (derivatives(j))(x), a=self.lb, b=self.ub)[0]
+                if i <= j:
+                    A[i,j] = quad(func=lambda x: family(x,i) * family(x,j), a=self.lb, b=self.ub)[0]
+                    B[i,j] = -self.v * quad(func=lambda x: (derivatives(i))(x) * (derivatives(j))(x), a=self.lb, b=self.ub)[0]
+                    D[i,j] = quad(func=lambda x: V_xx(x, 0) * family(x,i) * family(x,j), a=self.lb, b=self.ub)[0]
+                else: 
+                    A[i,j] = A[j,i]
+                    B[i,j] = B[j,i]
+                    D[i,j] = D[j,i]
                 C[i,j] = quad(func=lambda x: V_x(x, 0) * (derivatives(j))(x) * family(x,i), a=self.lb, b=self.ub)[0]
-                D[i,j] = quad(func=lambda x: V_xx(x, 0) * family(x,i) * family(x,j), a=self.lb, b=self.ub)[0]
         rho_0 = np.zeros(n_f)
         rho_0[0] = 1
         return A, B, C, D, rho_0
@@ -211,8 +216,8 @@ if __name__ == '__main__':
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
-    #solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
-    #solving2 = FP_equation.solve1d(N_x=100, N_t=30000, type='ck')
+    solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
+    solving2 = FP_equation.solve1d(N_x=100, N_t=30000, type='ck')
     solving3 = FP_equation.solve1d(n_f=10, N_x=100, N_t=30000, type='galerkin_fem')
 
     x = np.linspace(0, 1, 101)
@@ -221,8 +226,9 @@ if __name__ == '__main__':
 
     # Plotting the 3d figure
     ax = plt.axes(projection='3d')
+    ax.plot_surface(X, T, solving1)
+    ax.plot_surface(X, T, solving2)
     ax.plot_surface(X, T, solving3)
-    #ax.plot_surface(X, T, solving2)
     ax.set_xlabel('x')
     ax.set_ylabel('t')
     ax.set_zlabel('rho')
