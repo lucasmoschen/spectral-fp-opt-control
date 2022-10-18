@@ -57,7 +57,7 @@ class FokkerPlanckEquation:
         V_x_matrix = h_t/(2*h_x) * V_x(X_var, T_var)
         V_xx_matrix = h_t * V_xx(X_var, T_var)
         if self.v != 0:
-            V_x_border = h_x/self.v * V_x(*np.meshgrid([self.lb, self.ub], t_var+h_t))
+            V_x_border = h_x/self.v * V_x(*np.meshgrid([self.lb, self.ub-h_x], t_var+h_t))
         else:
             V_x_border = None
         coef1 = self.v*h_t/h_x**2
@@ -66,7 +66,6 @@ class FokkerPlanckEquation:
         A = coef1 + V_x_matrix
         B = coef2 + V_xx_matrix
         C = coef1 - V_x_matrix
-
         rho_0 = self.p0(x_var)
         
         return A, B, C, rho_0, V_x_border
@@ -85,14 +84,25 @@ class FokkerPlanckEquation:
         alpha_xx = egrad(alpha_x)
         V_xx = lambda x,t: G_xx(x) + alpha_xx(x) * self.u(t)
 
-        x_var = np.arange(self.lb, self.lb+self.X+0.99*h_x, h_x)
-        t_var = np.arange(0, self.T, h_t)
+        x_var = np.arange(self.lb, self.lb+self.X+0.9*h_x, h_x)
+        t_var = np.arange(0, self.T+0.9*h_t, h_t)
         X_var, T_var = np.meshgrid(x_var[1:-1], t_var)
-        V_x_matrix = h_t/(2*h_x) * V_x(X_var, T_var)
-        V_xx_matrix = h_t * V_xx(X_var, T_var)
+        V_x_matrix = V_x(X_var, T_var)
+        V_xx_matrix = V_xx(X_var, T_var)
+        if self.v != 0:
+            V_x_border = [V_x(*np.meshgrid([self.lb, self.ub-h_x], t_var[1:])) - self.v/h_x, self.v/h_x]
+        else:
+            V_x_border = None
 
-        rho_0 = self.p0(x_var)        
-        return rho_0
+        A1 = 0.5/h_x * (0.5 * V_x_matrix[1:, :] - self.v/h_x)
+        A2 = 1/h_t + self.v/h_x**2 - 0.5 * V_xx_matrix[1:, :]
+        A3 = -0.5/h_x * (0.5 * V_x_matrix[1:, :] + self.v/h_x)
+        B1 = 0.5/h_x * (self.v/h_x - 0.5 * V_x_matrix[:-1, :])
+        B2 = 1/h_t - self.v/h_x**2 + 0.5 * V_xx_matrix[:-1, :]
+        B3 = 0.5/h_x * (0.5 * V_x_matrix[:-1, :] + self.v/h_x)
+        rho_0 = self.p0(x_var)
+
+        return A1, A2, A3, B1, B2, B3, rho_0, V_x_border
 
     def _solve1d_forward_finite_difference(self, N_x, N_t):
         A, B, C, rho_0, V_x_border = self._pre_calculations_1d_forward_finite_difference(N_x, N_t)
@@ -105,11 +115,21 @@ class FokkerPlanckEquation:
         return rho
 
     def _solve1d_ck_finite_difference(self, N_x, N_t):
-        rho_0 = self._pre_calculations_1d_ck_finite_difference(N_x, N_t)
+        A1, A2, A3, B1, B2, B3, rho_0, V_x_border = self._pre_calculations_1d_ck_finite_difference(N_x, N_t)
+        A = np.zeros((N_x+1, N_x+1))
         rho = np.zeros((N_t+1, N_x+1))
         rho[0,:] = rho_0
-        print('Warning - TO FINISH')
-        return None
+        for i in tqdm(range(N_t)):
+            rho[i+1,1:N_x] = B1[i,:]*rho[i,0:N_x-1] + B2[i,:]*rho[i,1:N_x] + B3[i,:]*rho[i,2:N_x+1]
+            A[0,0] = V_x_border[0][i,0]
+            A[0,1] = V_x_border[1]
+            A[N_x, N_x-1] = V_x_border[0][i,1]
+            A[N_x, N_x] = V_x_border[1]
+            A[range(1,N_x), range(N_x-1)] = A1[i,:]
+            A[range(1,N_x), range(1,N_x)] = A2[i,:]
+            A[range(1,N_x), range(2,N_x+1)] = A3[i,:]
+            rho[i+1,:] = np.linalg.solve(A, rho[i+1,:])
+        return rho
 
     def solve1d(self, N_x, N_t, type='forward'):
         """
@@ -132,22 +152,25 @@ if __name__ == '__main__':
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
-    solving = FP_equation.solve1d(N_x=100, N_t=30000)
+    solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
+    solving2 = FP_equation.solve1d(N_x=100, N_t=30000, type='ck')
 
     x = np.linspace(0, 1, 101)
     t = np.linspace(0, 1, 30001)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
-    # ax = plt.axes(projection='3d')
-    # ax.plot_surface(X, T, solving)
-    # ax.set_xlabel('x')
-    # ax.set_ylabel('t')
-    # ax.set_zlabel('rho')
-    # plt.show() 
+    ax = plt.axes(projection='3d')
+    ax.plot_surface(X, T, solving1)
+    ax.plot_surface(X, T, solving2)
+    ax.set_xlabel('x')
+    ax.set_ylabel('t')
+    ax.set_zlabel('rho')
+    plt.show() 
 
     # Plotting the integral of x-axis for each time
-    plt.plot(t, solving.sum(axis=1)/100)
+    plt.plot(t, solving1.sum(axis=1)/100)
+    plt.plot(t, solving2.sum(axis=1)/100)
     plt.ylim(0, 2)
     plt.show()
 
