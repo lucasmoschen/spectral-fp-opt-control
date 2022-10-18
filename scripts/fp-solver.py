@@ -1,8 +1,9 @@
 #!usr/bin/env/python
 
-import numpy as np
-from autograd import grad
-from autograd import elementwise_grad as egrad
+#import numpy as np
+import autograd.numpy as np 
+from autograd import elementwise_grad as egrad, grad
+from scipy.integrate import quad
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -104,6 +105,45 @@ class FokkerPlanckEquation:
 
         return A1, A2, A3, B1, B2, B3, rho_0, V_x_border
 
+    def _pre_calculations_1d_galerkin_finite_elements(self, family, n_f):
+        """
+        Perform the matrix calculations for the 1d solving problem - Galerkin Finite Elements.
+        """
+        G_x = egrad(self.G)
+        alpha_x = egrad(self.alpha)
+        V_x = lambda x,t: G_x(x) + alpha_x(x) * self.u(t)
+        G_xx = egrad(G_x)
+        alpha_xx = egrad(alpha_x)
+        V_xx = lambda x,t: G_xx(x) + alpha_xx(x) * self.u(t)
+        
+        A = np.zeros((n_f, n_f))
+        B = np.zeros((n_f, n_f))
+        C = np.zeros((n_f, n_f))
+        D = np.zeros((n_f, n_f))
+        derivatives = [grad(lambda x: family(x,n)) for n in range(n_f)]
+        for i in range(n_f):
+            for j in range(n_f):
+                A[i,j] = quad(func=lambda x: family(x,i) * family(x,j), a=self.lb, b=self.ub)[0]
+                B[i,j] = -self.v * quad(func=lambda x: derivatives[i](x) * derivatives[j](x), a=self.lb, b=self.ub)[0]
+                C[i,j] = quad(func=lambda x: V_x(x, 0) * derivatives[j](x) * family(x,i), a=self.lb, b=self.ub)[0]
+                D[i,j] = quad(func=lambda x: V_xx(x, 0) * family(x,i) * family(x,j), a=self.lb, b=self.ub)[0]
+        rho_0 = np.zeros(n_f)
+        rho_0[0] = 1
+        return A, B, C, D, rho_0
+
+    def _building_family(self):
+        """
+        This function builds a list of functions who will serve as test functions for the galerkin method.
+        """
+        def family(x,n):
+            if n == 0:
+                return self.p0(x)
+            elif n % 2 == 1:
+                return np.sin(2*n*np.pi*x)
+            else:
+                return np.cos(2*n*np.pi*x)-1
+        return family
+
     def _solve1d_forward_finite_difference(self, N_x, N_t):
         A, B, C, rho_0, V_x_border = self._pre_calculations_1d_forward_finite_difference(N_x, N_t)
         rho = np.zeros((N_t+1, N_x+1))
@@ -131,7 +171,24 @@ class FokkerPlanckEquation:
             rho[i+1,:] = np.linalg.solve(A, rho[i+1,:])
         return rho
 
-    def solve1d(self, N_x, N_t, type='forward'):
+    def _solve1d_galerkin_finite_elements(self, n_f, N_x, N_t):
+        family = self._building_family()
+        A, B, C, D, rho_0 = self._pre_calculations_1d_galerkin_finite_elements(family, 2*n_f+1)
+        h_t = self.T/N_t
+        h_x = self.X/N_x
+        rho_vec = np.zeros((N_t+1, 2*n_f+1))
+        rho_vec[0,:] = rho_0
+        for i in tqdm(range(N_t)):
+            rho_vec[i+1,:] = (A + 0.5*h_t*(B+C+D)) @ rho_vec[i,:]
+            rho_vec[i+1,:] = np.linalg.solve(A-0.5*h_t*(B+C+D), rho_vec[i+1,:])
+        phi_matrix = np.zeros((2*n_f+1, N_x+1))
+        x = np.arange(self.lb, self.lb+self.X+0.9*h_x, h_x)
+        for k in range(2*n_f+1):
+            phi_matrix[k,:] = family(x, k)
+        rho = rho_vec @ phi_matrix
+        return rho
+
+    def solve1d(self, N_x=None, N_t=None, n_f=None, type='forward'):
         """
         Solves the Fokker-Planck equation in 1 dimension, including initial and boundary conditions.
         """
@@ -139,6 +196,8 @@ class FokkerPlanckEquation:
             rho = self._solve1d_forward_finite_difference(N_x, N_t)
         elif type == 'ck':
             rho = self._solve1d_ck_finite_difference(N_x, N_t)
+        elif type == 'galerkin_fem':
+            rho = self._solve1d_galerkin_finite_elements(n_f, N_x, N_t)
         return rho
 
 if __name__ == '__main__':
@@ -152,8 +211,9 @@ if __name__ == '__main__':
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
-    solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
-    solving2 = FP_equation.solve1d(N_x=100, N_t=30000, type='ck')
+    #solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
+    #solving2 = FP_equation.solve1d(N_x=100, N_t=30000, type='ck')
+    solving3 = FP_equation.solve1d(n_f=10, N_x=100, N_t=30000, type='galerkin_fem')
 
     x = np.linspace(0, 1, 101)
     t = np.linspace(0, 1, 30001)
@@ -161,17 +221,16 @@ if __name__ == '__main__':
 
     # Plotting the 3d figure
     ax = plt.axes(projection='3d')
-    ax.plot_surface(X, T, solving1)
-    ax.plot_surface(X, T, solving2)
+    ax.plot_surface(X, T, solving3)
+    #ax.plot_surface(X, T, solving2)
     ax.set_xlabel('x')
     ax.set_ylabel('t')
     ax.set_zlabel('rho')
     plt.show() 
 
     # Plotting the integral of x-axis for each time
-    plt.plot(t, solving1.sum(axis=1)/100)
-    plt.plot(t, solving2.sum(axis=1)/100)
-    plt.ylim(0, 2)
-    plt.show()
-
+    #plt.plot(t, solving1.sum(axis=1)/100)
+    #plt.plot(t, solving2.sum(axis=1)/100)
+    #plt.ylim(0, 2)
+    #plt.show()
         
