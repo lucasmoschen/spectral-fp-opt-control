@@ -52,7 +52,7 @@ class FokkerPlanckEquation:
         alpha_xx = egrad(alpha_x)
         V_xx = lambda x,t: G_xx(x) + alpha_xx(x) * self.u(t)
 
-        x_var = np.arange(self.lb, self.lb+self.X+0.99*h_x, h_x)
+        x_var = np.arange(self.lb, self.ub+0.99*h_x, h_x)
         t_var = np.arange(0, self.T, h_t)
         X_var, T_var = np.meshgrid(x_var[1:-1], t_var)
         V_x_matrix = h_t/(2*h_x) * V_x(X_var, T_var)
@@ -85,7 +85,7 @@ class FokkerPlanckEquation:
         alpha_xx = egrad(alpha_x)
         V_xx = lambda x,t: G_xx(x) + alpha_xx(x) * self.u(t)
 
-        x_var = np.arange(self.lb, self.lb+self.X+0.9*h_x, h_x)
+        x_var = np.arange(self.lb, self.ub+0.9*h_x, h_x)
         t_var = np.arange(0, self.T+0.9*h_t, h_t)
         X_var, T_var = np.meshgrid(x_var[1:-1], t_var)
         V_x_matrix = V_x(X_var, T_var)
@@ -120,12 +120,12 @@ class FokkerPlanckEquation:
         B = np.zeros((n_f, n_f))
         C = np.zeros((n_f, n_f))
         D = np.zeros((n_f, n_f))
-        derivatives = [grad(lambda x: family(x,n)) for n in range(n_f)]
+        derivatives = lambda n: grad(lambda x: family(x,n))
         for i in range(n_f):
             for j in range(n_f):
                 A[i,j] = quad(func=lambda x: family(x,i) * family(x,j), a=self.lb, b=self.ub)[0]
-                B[i,j] = -self.v * quad(func=lambda x: derivatives[i](x) * derivatives[j](x), a=self.lb, b=self.ub)[0]
-                C[i,j] = quad(func=lambda x: V_x(x, 0) * derivatives[j](x) * family(x,i), a=self.lb, b=self.ub)[0]
+                B[i,j] = -self.v * quad(func=lambda x: (derivatives(i))(x) * (derivatives(j))(x), a=self.lb, b=self.ub)[0]
+                C[i,j] = quad(func=lambda x: V_x(x, 0) * (derivatives(j))(x) * family(x,i), a=self.lb, b=self.ub)[0]
                 D[i,j] = quad(func=lambda x: V_xx(x, 0) * family(x,i) * family(x,j), a=self.lb, b=self.ub)[0]
         rho_0 = np.zeros(n_f)
         rho_0[0] = 1
@@ -182,7 +182,7 @@ class FokkerPlanckEquation:
             rho_vec[i+1,:] = (A + 0.5*h_t*(B+C+D)) @ rho_vec[i,:]
             rho_vec[i+1,:] = np.linalg.solve(A-0.5*h_t*(B+C+D), rho_vec[i+1,:])
         phi_matrix = np.zeros((2*n_f+1, N_x+1))
-        x = np.arange(self.lb, self.lb+self.X+0.9*h_x, h_x)
+        x = np.arange(self.lb, self.ub+0.9*h_x, h_x)
         for k in range(2*n_f+1):
             phi_matrix[k,:] = family(x, k)
         rho = rho_vec @ phi_matrix
