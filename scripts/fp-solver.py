@@ -227,8 +227,8 @@ if __name__ == '__main__':
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
     solving1 = FP_equation.solve1d(N_x=25, N_t=100000, type='forward')
-    solving2 = FP_equation.solve1d(N_x=25, N_t=5000, type='ck')
-    solving3 = FP_equation.solve1d(n_f=21, N_x=25, N_t=5000, type='galerkin_fem')
+    solving2 = FP_equation.solve1d(N_x=25, N_t=100000, type='ck')
+    solving3 = FP_equation.solve1d(n_f=21, N_x=25, N_t=100000, type='galerkin_fem')
 
     x = np.linspace(0, 1, 26)
     t = np.linspace(0, 10, 100001)
