@@ -163,13 +163,18 @@ class FokkerPlanckEquation:
         A[[0,-1],[0,-1]] = h_f/3
         
         B = np.zeros((n_f, n_f))
-        B[0,0] = -self.v + quad(lambda x: V_x(x+self.lb,0)*(1-x/h_f), a=0.0, b=h_f)[0]
-        B[0,1] = self.v + quad(lambda x: V_x(x+self.lb,0)*x/h_f, a=0.0, b=h_f)[0]
+        #B[0,0] = -self.v + quad(lambda x: V_x(x+self.lb,0)*(1-x/h_f), a=0.0, b=h_f)[0]
+        #B[0,1] = self.v + quad(lambda x: V_x(x+self.lb,0)*x/h_f, a=0.0, b=h_f)[0]
+        #B[-1,-2] = self.v - quad(lambda x: V_x(x+self.lb,0)*(n_f-x/h_f), a=(n_f-1)*h_f, b=n_f*h_f)[0]
+        #B[-1,-1] = -self.v - quad(lambda x: V_x(x+self.lb,0)*(x/h_f-n_f+1), a=(n_f-1)*h_f, b=n_f*h_f)[0]
+        d = np.zeros(n_f)
+        v = self.G(np.arange(self.lb, self.ub+0.9*h_f, h_f)) + self.alpha(np.arange(self.lb, self.ub+0.9*h_f, h_f)) * self.u(0)
+        for i in range(n_f-1):
+            d[i] = quad(lambda x: V_x(x+self.lb,0)*x, a=i*h_f, b=(i+1)*h_f)[0]/h_f
         for i in range(1, n_f-1):
-            B[i,i-1] = self.v - quad(lambda x: V_x(x+self.lb,0)*(i-x/h_f), a=(i-1)*h_f, b=i*h_f)[0]
-            B[i,i] = -2*self.v - quad(lambda x: V_x(x+self.lb,0)*(x/h_f-i+1), a=(i-1)*h_f, b=i*h_f)[0]
-            B[i,i] += quad(lambda x: V_x(x+self.lb,0)*(i+1-x/h_f), a=i*h_f, b=(i+1)*h_f)[0]
-            B[i,i+1] = self.v + quad(lambda x: V_x(x+self.lb,0)*(x/h_f - i), a=i*h_f, b=(i+1)*h_f)[0]
+            B[i,i-1] = self.v - i*(v[i] - v[i-1]) + d[i-1]
+            B[i,i] = -2*self.v - d[i-1] - d[i] + (i-1) * (v[i]-v[i-1]) + (i+1) * (v[i+1]-v[i])
+            B[i,i+1] = self.v - i*(v[i+1]-v[i])+ d[i]
         B /= h_f
 
         a = np.zeros(n_f)
@@ -303,10 +308,10 @@ if __name__ == '__main__':
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
-    #solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
-    #solving2 = FP_equation.solve1d(N_x=100, N_t=30000, type='ck')
-    solving3 = FP_equation.solve1d(n_f=21, N_x=100, N_t=30000, type='general_fem')
-    #solving4 = FP_equation.solve1d(n_f=50, N_x=100, N_t=30000, type='galerkin_fem')
+    solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
+    solving2 = FP_equation.solve1d(N_x=100, N_t=30000, type='ck')
+    #solving3 = FP_equation.solve1d(n_f=21, N_x=100, N_t=30000, type='general_fem')
+    solving4 = FP_equation.solve1d(n_f=50, N_x=100, N_t=30000, type='galerkin_fem')
     
     x = np.linspace(0, 1, 101)
     t = np.linspace(0, 1, 30001)
@@ -314,10 +319,10 @@ if __name__ == '__main__':
 
     # Plotting the 3d figure
     ax = plt.axes(projection='3d')
-    #ax.plot_surface(X, T, solving1)
-    #ax.plot_surface(X, T, solving2)
-    ax.plot_surface(X, T, solving3)
-    #ax.plot_surface(X, T, solving4)
+    ax.plot_surface(X, T, solving1)
+    ax.plot_surface(X, T, solving2)
+    #ax.plot_surface(X, T, solving3)
+    ax.plot_surface(X, T, solving4)
     ax.set_xlabel('x')
     ax.set_ylabel('t')
     ax.set_zlabel('rho')
