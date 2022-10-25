@@ -39,6 +39,19 @@ class FokkerPlanckEquation:
         self.ub = float(parameters['interval'][1])
         self.X = self.ub - self.lb
 
+    def _building_family(self):
+        """
+        This function builds a list of functions who will serve as test functions for the general method.
+        """
+        def family(x,n):
+            if n == 0:
+                return self.p0(x)
+            elif n % 2 == 1:
+                return np.sin(2*n*np.pi*x)
+            else:
+                return np.cos(2*n*np.pi*x)
+        return family
+
     def _pre_calculations_1d_forward_finite_difference(self, N_x, N_t):
         """
         Perform the matrix calculations for the 1d solving problem - Forward Difference.
@@ -215,18 +228,45 @@ class FokkerPlanckEquation:
 
         return previous_matrix, next_matrix, B_new
 
-    def _building_family(self):
-        """
-        This function builds a list of functions who will serve as test functions for the general method.
-        """
-        def family(x,n):
-            if n == 0:
-                return self.p0(x)
-            elif n % 2 == 1:
-                return np.sin(2*n*np.pi*x)
-            else:
-                return np.cos(2*n*np.pi*x)
-        return family
+    def _pre_calculations_1d_chang_finite_difference(self, N_x, N_t):
+
+        h_x = self.X/N_x
+        h_t = self.T/N_t
+
+        G_x = egrad(self.G)
+        alpha_x = egrad(self.alpha)
+        V_x = lambda x,t: G_x(x) + alpha_x(x) * self.u(t)
+        V = lambda x,t: self.G(x) + self.alpha(x) * self.u(t)
+
+        x_var = np.arange(self.lb, self.ub+0.9*h_x, h_x)
+        rho_0 = self.p0(x_var)
+
+        t_var = np.arange(0, self.T, h_t)
+        B = V_x(*np.meshgrid(x_var[:-1]+0.5*h_x, t_var))
+        rho_bar = np.exp(-V(*np.meshgrid(x_var+0.5*h_x, t_var+h_t)))
+        delta = self.v/h_x * (1/B) - 1/(rho_bar[:,:-1]/rho_bar[:,1:] - 1)
+
+        return delta, B, rho_0, h_x, h_t
+
+    def _solve1d_chang_finite_difference(self, N_x, N_t):
+        
+        delta, B, rho_0, h_x, h_t = self._pre_calculations_1d_chang_finite_difference(N_x, N_t)
+        A = np.zeros((N_x+1,N_x+1))
+        rho = np.zeros((N_t+1, N_x+1))
+        rho[0,:] = rho_0
+        for i in tqdm(range(N_t)):
+            A[range(1,N_x), range(0,N_x-1)] = self.v/h_x - delta[i,:-1] * B[i,:-1]
+            A[range(1,N_x), range(1,N_x)] = -2*self.v/h_x - (1-delta[i,:-1]) * B[i,:-1] + delta[i,1:] * B[i,1:] 
+            A[range(1,N_x), range(2,N_x+1)] = self.v/h_x + (1-delta[i,1:]) * B[i,1:]
+            A *= h_t/h_x
+            A = np.eye(N_x+1) - A
+            A[0, [0,1]] = [delta[i,0] * B[i,0] - self.v/h_x, (1 - delta[i,0]) * B[i,0] + self.v/h_x]
+            A[-1, [-2,-1]] = [delta[i,-1] * B[i,-1] - self.v/h_x, (1 - delta[i,-1]) * B[i,-1] + self.v/h_x]
+            rho_save = np.copy(rho[i,[0,-1]])
+            rho[i,[0,-1]] = 0.0
+            rho[i+1,:] = np.linalg.solve(A, rho[i,:])
+            rho[i,[0,-1]] = rho_save
+        return rho
 
     def _solve1d_forward_finite_difference(self, N_x, N_t):
         A, B, C, rho_0, V_x_border = self._pre_calculations_1d_forward_finite_difference(N_x, N_t)
@@ -307,6 +347,8 @@ class FokkerPlanckEquation:
             rho = self._solve1d_forward_finite_difference(N_x, N_t)
         elif type == 'ck':
             rho = self._solve1d_ck_finite_difference(N_x, N_t)
+        elif type == 'chang_cooper':
+            rho = self._solve1d_chang_finite_difference(N_x, N_t)
         elif type == 'general_fem':
             rho = self._solve1d_general_finite_elements(n_f, N_x, N_t)
         elif type == 'galerkin_fem':
@@ -315,8 +357,8 @@ class FokkerPlanckEquation:
 
 if __name__ == '__main__':
 
-    G_func = lambda x: x**3
-    alpha_func = lambda x: x
+    G_func = lambda x: x**2
+    alpha_func = lambda x: 0.0
     control = lambda t: 1.0
     p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     interval = [0.0, 1.0]
@@ -325,12 +367,13 @@ if __name__ == '__main__':
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
     #solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
-    solving2 = FP_equation.solve1d(N_x=200, N_t=2000, type='ck')
+    solving2 = FP_equation.solve1d(N_x=100, N_t=20000, type='ck')
     #solving3 = FP_equation.solve1d(n_f=21, N_x=100, N_t=30000, type='general_fem')
-    solving4 = FP_equation.solve1d(n_f=50, N_x=200, N_t=2000, type='galerkin_fem')
+    #solving4 = FP_equation.solve1d(n_f=50, N_x=200, N_t=2000, type='galerkin_fem')
+    solving5 = FP_equation.solve1d(N_x=100, N_t=20000, type='chang_cooper')
     
-    x = np.linspace(0, 1, 201)
-    t = np.linspace(0, 1, 2001)
+    x = np.linspace(0, 1, 101)
+    t = np.linspace(0, 1, 20001)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
@@ -338,14 +381,15 @@ if __name__ == '__main__':
     #ax.plot_surface(X, T, solving1)
     ax.plot_surface(X, T, solving2)
     #ax.plot_surface(X, T, solving3)
-    ax.plot_surface(X, T, solving4)
+    #ax.plot_surface(X, T, solving4)
+    ax.plot_surface(X, T, solving5)
     ax.set_xlabel('x')
     ax.set_ylabel('t')
     ax.set_zlabel('rho')
     plt.show() 
 
     # Plotting the integral of x-axis for each time
-    #plt.plot(t, solving2.sum(axis=1)/200, label='first')
+    #plt.plot(t, solving5.sum(axis=1)/100, label='first')
     #plt.plot(t, solving4.sum(axis=1)/200, label='second')
     #plt.legend()
     #plt.show()
