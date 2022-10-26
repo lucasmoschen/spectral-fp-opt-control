@@ -162,7 +162,7 @@ class FokkerPlanckEquation:
         Perform the matrix calculations for the 1d solving problem - Galerkin Finite Elements. 
         We consider the basis of functions linear by parts.
         """
-        h_f = self.X/n_f
+        h_f = self.X/(n_f-1)
         h_t = self.T/N_t
         G_x = egrad(self.G)
         alpha_x = egrad(self.alpha)
