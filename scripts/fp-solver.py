@@ -5,6 +5,7 @@ import autograd.numpy as np
 from autograd import elementwise_grad as egrad, grad
 from scipy.integrate import quad
 from scipy.stats import norm
+from scipy.linalg import solve_banded
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -171,36 +172,68 @@ class FokkerPlanckEquation:
         G_values = self.G(x_values)
         alpha_values = self.alpha(x_values)
 
-        A = np.zeros((n_f, n_f))
-        A[range(n_f-1), range(1,n_f)] = h_f/6
-        A[range(1,n_f), range(n_f-1)] = h_f/6
-        A[range(1,n_f-1), range(1,n_f-1)] = 2*h_f/3
-        A[[0,-1],[0,-1]] = h_f/3
+        # A = np.zeros((n_f, n_f))
+        # A[range(0,n_f-1), range(1,n_f)] = h_f/6
+        # A[range(1,n_f-1), range(1,n_f-1)] = 2*h_f/3
+        # A[range(1,n_f), range(n_f-1)] = h_f/6
+        # A[[0,-1],[0,-1]] = h_f/3
 
-        B = np.zeros((n_f, n_f))
-        B[range(0,n_f-1), range(1,n_f)] = self.v/h_f
-        B[range(1,n_f-1), range(1,n_f-1)] = -2*self.v/h_f
-        B[range(1,n_f), range(0,n_f-1)] = self.v/h_f
-        B[[0,-1],[0,-1]] = -self.v/h_f
+        A = np.zeros((3, n_f))
+        A[0,1:] = h_f/6
+        A[1,1:-1] = 2*h_f/3
+        A[1,[0,-1]] = h_f/3
+        A[2,:-1] = h_f/6
 
-        C = np.zeros((n_f, n_f))
+        # B = np.zeros((n_f, n_f))
+        # B[range(0,n_f-1), range(1,n_f)] = self.v/h_f
+        # B[range(1,n_f-1), range(1,n_f-1)] = -2*self.v/h_f
+        # B[range(1,n_f), range(n_f-1)] = self.v/h_f
+        # B[[0,-1],[0,-1]] = -self.v/h_f
+
+        B = np.zeros((3, n_f))
+        B[0, 1:] = self.v/h_f
+        B[1, 1:-1] = -2*self.v/h_f
+        B[1,[0,-1]] = -self.v/h_f
+        B[2, :-1] = self.v/h_f
+
+        # C = np.zeros((n_f, n_f))
+        # g_x = np.zeros(n_f)
+        # for i in range(n_f-1):
+        #     g_x[i] = quad(lambda x: G_x(x+self.lb)*x, a=i*h_f, b=(i+1)*h_f)[0]/h_f
+        # for i in range(1, n_f-1):
+        #     C[i,i-1] = g_x[i-1] - i*(G_values[i] - G_values[i-1])
+        #     C[i,i] = (i-1) * (G_values[i]-G_values[i-1]) + (i+1) * (G_values[i+1]-G_values[i]) - g_x[i-1] - g_x[i]
+        #     C[i,i+1] = g_x[i] - i*(G_values[i+1]-G_values[i])
+        # C /= h_f
+
+        C = np.zeros((3,n_f))
         g_x = np.zeros(n_f)
         for i in range(n_f-1):
             g_x[i] = quad(lambda x: G_x(x+self.lb)*x, a=i*h_f, b=(i+1)*h_f)[0]/h_f
         for i in range(1, n_f-1):
-            C[i,i-1] = g_x[i-1] - i*(G_values[i] - G_values[i-1])
-            C[i,i] = (i-1) * (G_values[i]-G_values[i-1]) + (i+1) * (G_values[i+1]-G_values[i]) - g_x[i-1] - g_x[i]
-            C[i,i+1] = g_x[i] - i*(G_values[i+1]-G_values[i])
+            C[0,i+1] =  g_x[i] - i*(G_values[i+1]-G_values[i])
+            C[1,i] = (i-1) * (G_values[i]-G_values[i-1]) + (i+1) * (G_values[i+1]-G_values[i]) - g_x[i-1] - g_x[i]
+            C[2,i-1] = g_x[i-1] - i*(G_values[i] - G_values[i-1])
         C /= h_f
+        
+        # D = np.zeros((n_f, n_f))
+        # a_x = np.zeros(n_f)
+        # for i in range(n_f-1):
+        #     a_x[i] = quad(lambda x: alpha_x(x+self.lb)*x, a=i*h_f, b=(i+1)*h_f)[0]/h_f
+        # for i in range(1, n_f-1):
+        #     D[i,i-1] = a_x[i-1] - i*(alpha_values[i] - alpha_values[i-1])
+        #     D[i,i] = (i-1) * (alpha_values[i]-alpha_values[i-1]) + (i+1) * (alpha_values[i+1]-alpha_values[i]) - a_x[i-1] - a_x[i]
+        #     D[i,i+1] = a_x[i] - i*(alpha_values[i+1]-alpha_values[i])
+        # D /= h_f
 
-        D = np.zeros((n_f, n_f))
+        D = np.zeros((3,n_f))
         a_x = np.zeros(n_f)
         for i in range(n_f-1):
             a_x[i] = quad(lambda x: alpha_x(x+self.lb)*x, a=i*h_f, b=(i+1)*h_f)[0]/h_f
         for i in range(1, n_f-1):
-            D[i,i-1] = a_x[i-1] - i*(alpha_values[i] - alpha_values[i-1])
-            D[i,i] = (i-1) * (alpha_values[i]-alpha_values[i-1]) + (i+1) * (alpha_values[i+1]-alpha_values[i]) - a_x[i-1] - a_x[i]
-            D[i,i+1] = a_x[i] - i*(alpha_values[i+1]-alpha_values[i])
+            D[0,i+1] =  a_x[i] - i*(alpha_values[i+1]-alpha_values[i])
+            D[1,i] = (i-1) * (alpha_values[i]-alpha_values[i-1]) + (i+1) * (alpha_values[i+1]-alpha_values[i]) - a_x[i-1] - a_x[i]
+            D[2,i-1] = a_x[i-1] - i*(alpha_values[i] - alpha_values[i-1])
         D /= h_f
 
         a = np.zeros(n_f)
@@ -210,16 +243,22 @@ class FokkerPlanckEquation:
             a[i] = quad(lambda x: self.p0(x+self.lb)*(x/h_f-i+1), a=(i-1)*h_f, b=i*h_f)[0]
             a[i] += quad(lambda x: self.p0(x+self.lb)*(i+1-x/h_f), a=i*h_f, b=(i+1)*h_f)[0]
 
-        rho_0 = np.linalg.solve(A, a)
-        A[[0,1], :] = 0.0 
+        #rho_0 = np.linalg.solve(A, a)
+        rho_0 = solve_banded(l_and_u=(1,1), ab=A, b=a)
+        #A[[0,-1], :] = 0.0
+        A[[0,1,1,2],[1,0,-1,-2]] = 0.0
 
-        b = np.zeros((N_t, n_f))
+        # b = np.zeros((N_t, n_f))
+        b = np.zeros((N_t, 2))        
         b[:,0] = V_x(*np.meshgrid([self.lb], np.arange(0, self.T, h_t) + h_t))[:,0] - self.v/h_f
         b[:,1] = self.v/h_f
 
-        c = np.zeros((N_t, n_f))
-        c[:,-1] = V_x(*np.meshgrid([self.ub], np.arange(0, self.T, h_t) + h_t))[:,0] + self.v/h_f
-        c[:,-2] = -self.v/h_f
+        #c = np.zeros((N_t, n_f))
+        c = np.zeros((N_t, 2))
+        #c[:,-1] = V_x(*np.meshgrid([self.ub], np.arange(0, self.T, h_t) + h_t))[:,0] + self.v/h_f
+        #c[:,-2] = -self.v/h_f
+        c[:,1] = V_x(*np.meshgrid([self.ub], np.arange(0, self.T, h_t) + h_t))[:,0] + self.v/h_f
+        c[:,0] = -self.v/h_f
 
         return A, B, C, D, b, c, rho_0, h_f
 
@@ -324,18 +363,23 @@ class FokkerPlanckEquation:
 
             previous_matrix = A + 0.5*h_t*(B + C + self.u((i+1)*h_t) * D)
             next_matrix = A - 0.5*h_t*(B + C + self.u((i+1)*h_t) * D)
-            next_matrix[0,:] = b[i,:]
-            next_matrix[-1,:] = c[i,:]
-            rho_vec[i+1,:] = previous_matrix @ rho_vec[i,:]
-            rho_vec[i+1,:] = np.linalg.solve(next_matrix, rho_vec[i+1,:])
+            #next_matrix[0,:] = b[i,:]
+            #next_matrix[-1,:] = c[i,:]
+            next_matrix[[1,0], [0,1]] = b[i,:]
+            next_matrix[[2,1],[-2,-1]] = c[i,:]
+            #rho_vec[i+1,:] = previous_matrix @ rho_vec[i,:]
+            #rho_vec[i+1,:] = np.linalg.solve(next_matrix, rho_vec[i+1,:])
+            rho_vec[i+1,:] = np.roll(previous_matrix[0,:]*rho_vec[i,:], -1)
+            rho_vec[i+1,:] += previous_matrix[1,:]*rho_vec[i,:] 
+            rho_vec[i+1,:] += np.roll(previous_matrix[2,:]*rho_vec[i,:], 1)
+            rho_vec[i+1,:] = solve_banded(l_and_u=(1,1), ab=next_matrix, b=rho_vec[i+1,:])
 
         phi_matrix = np.zeros((n_f, N_x+1))
         x = np.arange(0.0, self.X+0.9*h_x, h_x)
         for k in range(n_f):
             phi_matrix[k,:] = (x/h_f - (k-1)) * (x >= (k-1)*h_f) * (x < k*h_f) 
-            phi_matrix[k,:] += (k+1 - x/h_f) * (x >= k*h_f) * (x <= (k+1)*h_f) 
+            phi_matrix[k,:] += (k+1 - x/h_f) * (x >= k*h_f) * (x <= (k+1)*h_f)
         rho = rho_vec @ phi_matrix
-
         return rho
 
     def solve1d(self, N_x=None, N_t=None, n_f=None, type='forward'):
@@ -356,42 +400,42 @@ class FokkerPlanckEquation:
 
 if __name__ == '__main__':
 
-    G_func = lambda x: x**2
+    G_func = lambda x: np.cos(x) - 0.95 * x
     alpha_func = lambda x: 0.0*x
     control = lambda t: 1.0
     p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     interval = [0.0, 1.0]
-    parameters = {'v': 1.0, 'T': 5.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 2.05, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
-    #solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
-    solving2 = FP_equation.solve1d(N_x=200, N_t=30000, type='ck')
+    #solving1 = FP_equation.solve1d(N_x=100, N_t=60000, type='forward')
+    #solving2 = FP_equation.solve1d(N_x=200, N_t=30000, type='ck')
     #solving3 = FP_equation.solve1d(n_f=21, N_x=100, N_t=30000, type='general_fem')
-    solving4 = FP_equation.solve1d(n_f=200, N_x=200, N_t=30000, type='galerkin_fem')
-    solving5 = FP_equation.solve1d(N_x=200, N_t=30000, type='chang_cooper')
+    solving4 = FP_equation.solve1d(n_f=500, N_x=500, N_t=30000, type='galerkin_fem')
+    #solving5 = FP_equation.solve1d(N_x=500, N_t=30000, type='chang_cooper')
     
-    x = np.linspace(0, 1, 101)
-    t = np.linspace(0, 5, 30001)
+    x = np.linspace(0, 1, 501)
+    t = np.linspace(0, 1.0, 30001)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
-    #ax = plt.axes(projection='3d')
+    ax = plt.axes(projection='3d')
     #ax.plot_surface(X, T, solving1)
     #ax.plot_surface(X, T, solving2)
     #ax.plot_surface(X, T, solving3)
-    #ax.plot_surface(X, T, solving4)
+    ax.plot_surface(X, T, solving4)
     #ax.plot_surface(X, T, solving5)
-    #ax.set_xlabel('x')
-    #ax.set_ylabel('t')
-    #ax.set_zlabel('rho')
-    #plt.show() 
+    ax.set_xlabel('x')
+    ax.set_ylabel('t')
+    ax.set_zlabel('rho')
+    plt.show() 
 
     # Plotting the integral of x-axis for each time
     #plt.plot(t, solving1.sum(axis=1)/100, label='forward')
-    plt.plot(t, solving2.sum(axis=1)/200, label='ck')
-    plt.plot(t, solving4.sum(axis=1)/200, label='galerkin')
-    plt.plot(t, solving5.sum(axis=1)/200, label='chang')
-    plt.legend()
-    plt.show()
+    #plt.plot(t, solving2.sum(axis=1)/200, label='ck')
+    #plt.plot(t, solving4.sum(axis=1)/200, label='galerkin')
+    #plt.plot(t, solving5.sum(axis=1)/200, label='chang')
+    #plt.legend()
+    #plt.show() 
         
