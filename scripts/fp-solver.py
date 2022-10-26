@@ -361,35 +361,37 @@ if __name__ == '__main__':
     control = lambda t: 1.0
     p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     interval = [0.0, 1.0]
-    parameters = {'v': 1.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 1.0, 'T': 5.0, 'p_0': p_0, 'interval': interval}
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
     #solving1 = FP_equation.solve1d(N_x=100, N_t=30000, type='forward')
-    solving2 = FP_equation.solve1d(N_x=200, N_t=10000, type='ck')
+    solving2 = FP_equation.solve1d(N_x=200, N_t=30000, type='ck')
     #solving3 = FP_equation.solve1d(n_f=21, N_x=100, N_t=30000, type='general_fem')
-    solving4 = FP_equation.solve1d(n_f=50, N_x=200, N_t=10000, type='galerkin_fem')
-    #solving5 = FP_equation.solve1d(N_x=100, N_t=20000, type='chang_cooper')
+    solving4 = FP_equation.solve1d(n_f=200, N_x=200, N_t=30000, type='galerkin_fem')
+    solving5 = FP_equation.solve1d(N_x=200, N_t=30000, type='chang_cooper')
     
-    x = np.linspace(0, 1, 201)
-    t = np.linspace(0, 1, 10001)
+    x = np.linspace(0, 1, 101)
+    t = np.linspace(0, 5, 30001)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
-    ax = plt.axes(projection='3d')
+    #ax = plt.axes(projection='3d')
     #ax.plot_surface(X, T, solving1)
-    ax.plot_surface(X, T, solving2)
+    #ax.plot_surface(X, T, solving2)
     #ax.plot_surface(X, T, solving3)
-    ax.plot_surface(X, T, solving4)
+    #ax.plot_surface(X, T, solving4)
     #ax.plot_surface(X, T, solving5)
-    ax.set_xlabel('x')
-    ax.set_ylabel('t')
-    ax.set_zlabel('rho')
-    plt.show() 
+    #ax.set_xlabel('x')
+    #ax.set_ylabel('t')
+    #ax.set_zlabel('rho')
+    #plt.show() 
 
     # Plotting the integral of x-axis for each time
-    #plt.plot(t, solving5.sum(axis=1)/100, label='first')
-    #plt.plot(t, solving4.sum(axis=1)/200, label='second')
-    #plt.legend()
-    #plt.show()
+    #plt.plot(t, solving1.sum(axis=1)/100, label='forward')
+    plt.plot(t, solving2.sum(axis=1)/200, label='ck')
+    plt.plot(t, solving4.sum(axis=1)/200, label='galerkin')
+    plt.plot(t, solving5.sum(axis=1)/200, label='chang')
+    plt.legend()
+    plt.show()
         
