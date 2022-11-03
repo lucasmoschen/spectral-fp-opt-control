@@ -295,8 +295,10 @@ class FokkerPlanckEquation:
 
         # 1. Find the collocation points 
         poly = legendre(n_p+1) - legendre(n_p-1)
-        collocation_points = np.roots(poly)
+        collocation_points = np.sort(np.roots(poly))
         collocation_points = 0.5*(self.ub-self.lb)*collocation_points + 0.5*(self.ub+self.lb)
+        collocation_points[0] = self.lb
+        collocation_points[-1] = self.ub
 
         # 2. Calculate the M matrix
         Gx_values = G_x(collocation_points)
@@ -316,9 +318,9 @@ class FokkerPlanckEquation:
             w_vec[j] = 0.0
             poly_objs.append(poly)
             phi_x[:, j] = np.polyder(poly, 1)(collocation_points)
-            phi_xx[:, j] = self.v * np.polyder(poly, 2)(collocation_points)
-
-        M1 = phi_xx + (phi_x.T*Gx_values).T + np.diag(Gxx_values)
+            phi_xx[:, j] = np.polyder(poly, 2)(collocation_points)
+            
+        M1 = self.v * phi_xx + (phi_x.T*Gx_values).T + np.diag(Gxx_values)
         M2 = (phi_x.T*alphax_values).T + np.diag(alphaxx_values)
 
         # 3. Calculate the boundary conditions
@@ -334,17 +336,16 @@ class FokkerPlanckEquation:
 
         M1, M2, poly_objs, collocation, boundaries = self._pre_calculation_1d_spectral_collocation(n_p)
 
-        rho_vec = np.zeros((N_t+1, n_p))
+        rho_vec = np.zeros((N_t+1, n_p+1))
         rho_vec[0,:] = self.p0(collocation)
-        M_new = M1 + self.u(0) * M2
-        for i in range(N_t):
-            M_old = M_new
-            M_old[[0,-1],:] = 0.0
-            rho_vec[i+1,:] = M_old @ rho_vec[i,:]
-            M_new = M1 * self.u(h_t * (i+1)) * M2
-            M_new[[0,-1],:] = boundaries[0]
-            M_new[[0,-1],[0,-1]] += boundaries[1] + boundaries[2] * self.u(h_t*(i+1))
-            rho_vec[i+1,:] = np.linalg.solve(M_new, rho_vec[i+1,:])
+        for i in tqdm(range(N_t)):
+            previous_matrix = identity + 0.5*h_t*(M1 + self.u(h_t*i) * M2)
+            next_matrix = identity - 0.5*h_t*(M1 + self.u(h_t*(i+1)) * M2)
+            previous_matrix[[0,-1],:] = 0.0
+            rho_vec[i+1,:] = previous_matrix @ rho_vec[i,:]
+            next_matrix[[0,-1],:] = boundaries[0]
+            next_matrix[[0,-1],[0,-1]] += boundaries[1] + boundaries[2] * self.u(h_t*(i+1))
+            rho_vec[i+1,:] = np.linalg.solve(next_matrix, rho_vec[i+1,:])
             
         phi_matrix = np.zeros((n_p+1, N_x+1))
         x = np.arange(0.0, self.X+0.9*h_x, h_x)
@@ -354,7 +355,6 @@ class FokkerPlanckEquation:
         return rho
 
     def _solve1d_chang_finite_difference(self, N_x, N_t):
-        
         delta, B, rho_0, h_x, h_t = self._pre_calculations_1d_chang_finite_difference(N_x, N_t)
         A = np.zeros((N_x+1,N_x+1))
         rho = np.zeros((N_t+1, N_x+1))
@@ -467,48 +467,51 @@ class FokkerPlanckEquation:
             rho = self._solve1d_general_finite_elements(n_f, N_x, N_t)
         elif type == 'galerkin_fem':
             rho = self._solve1d_galerkin_finite_elements(n_f, N_x, N_t)
+        elif type == 'spectral_collocation':
+            rho = self._solve1d_spectral_collocation(n_f, N_x, N_t)
         return rho
 
 if __name__ == '__main__':
 
-    G_func = lambda x: np.cos(x) - 0.95 * x
+    G_func = lambda x: x*x
     alpha_func = lambda x: 0.0*x
     control = lambda t: 1.0
     p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     interval = [0.0, 1.0]
-    parameters = {'v': 2.05, 'T': 1.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 1.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
-    FP_equation._pre_calculation_1d_spectral_collocation(n_p=10, N_x=10, N_t=100)
-
     #solving1 = FP_equation.solve1d(N_x=100, N_t=60000, type='forward')
-    #solving2 = FP_equation.solve1d(N_x=200, N_t=30000, type='ck')
+    solving2 = FP_equation.solve1d(N_x=200, N_t=3000, type='ck')
     #solving3 = FP_equation.solve1d(n_f=21, N_x=100, N_t=30000, type='general_fem')
     #solving4 = FP_equation.solve1d(n_f=500, N_x=500, N_t=30000, type='galerkin_fem')
     #solving5 = FP_equation.solve1d(N_x=500, N_t=30000, type='chang_cooper')
+    solving6 = FP_equation.solve1d(n_f=10, N_x=200, N_t=3000, type='spectral_collocation')
     
-    #x = np.linspace(0, 1, 501)
-    #t = np.linspace(0, 1.0, 30001)
-    #X, T = np.meshgrid(x,t)
+    x = np.linspace(0, 1, 201)
+    t = np.linspace(0, 1, 3001)
+    X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
-    #ax = plt.axes(projection='3d')
+    ax = plt.axes(projection='3d')
     #ax.plot_surface(X, T, solving1)
-    #ax.plot_surface(X, T, solving2)
+    ax.plot_surface(X, T, solving2)
     #ax.plot_surface(X, T, solving3)
     #ax.plot_surface(X, T, solving4)
     #ax.plot_surface(X, T, solving5)
-    #ax.set_xlabel('x')
-    #ax.set_ylabel('t')
-    #ax.set_zlabel('rho')
-    #plt.show() 
+    ax.plot_surface(X, T, solving6)
+    ax.set_xlabel('x')
+    ax.set_ylabel('t')
+    ax.set_zlabel('rho')
+    plt.show() 
 
     # Plotting the integral of x-axis for each time
-    #plt.plot(t, solving1.sum(axis=1)/100, label='forward')
+    #plt.plot(t, solving6.sum(axis=1)/200, label='forward')
     #plt.plot(t, solving2.sum(axis=1)/200, label='ck')
     #plt.plot(t, solving4.sum(axis=1)/500, label='galerkin')
     #plt.plot(t, solving5.sum(axis=1)/200, label='chang')
+    plt.plot(t, solving6.sum(axis=1)/200, label='spectral')
     #plt.legend()
-    #plt.show() 
+    plt.show() 
         
