@@ -3,9 +3,13 @@
 #import numpy as np
 import autograd.numpy as np 
 from autograd import elementwise_grad as egrad, grad
+
 from scipy.integrate import quad
 from scipy.stats import norm
 from scipy.linalg import solve_banded
+from scipy.special import legendre
+from scipy.interpolate import lagrange
+
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -282,6 +286,73 @@ class FokkerPlanckEquation:
 
         return delta, B, rho_0, h_x, h_t
 
+    def _pre_calculation_1d_spectral_collocation(self, n_p):
+
+        G_x = egrad(self.G)
+        alpha_x = egrad(self.alpha)
+        G_xx = egrad(G_x)
+        alpha_xx = egrad(alpha_x)
+
+        # 1. Find the collocation points 
+        poly = legendre(n_p+1) - legendre(n_p-1)
+        collocation_points = np.roots(poly)
+        collocation_points = 0.5*(self.ub-self.lb)*collocation_points + 0.5*(self.ub+self.lb)
+
+        # 2. Calculate the M matrix
+        Gx_values = G_x(collocation_points)
+        alphax_values = alpha_x(collocation_points)
+        Gxx_values = G_xx(collocation_points)
+        alphaxx_values = alpha_xx(collocation_points)
+
+        phi_x = np.zeros((n_p+1, n_p+1))
+        phi_xx = np.zeros((n_p+1, n_p+1))
+
+        poly_objs = []
+
+        w_vec = np.zeros(n_p+1)
+        for j in range(n_p+1):
+            w_vec[j] = 1.0
+            poly = lagrange(x=collocation_points, w=w_vec)
+            w_vec[j] = 0.0
+            poly_objs.append(poly)
+            phi_x[:, j] = np.polyder(poly, 1)(collocation_points)
+            phi_xx[:, j] = self.v * np.polyder(poly, 2)(collocation_points)
+
+        M1 = phi_xx + (phi_x.T*Gx_values).T + np.diag(Gxx_values)
+        M2 = (phi_x.T*alphax_values).T + np.diag(alphaxx_values)
+
+        # 3. Calculate the boundary conditions
+        boundaries = [self.v * phi_x[[0,-1],:],  Gx_values[[0,-1]], alphax_values[[0,-1]]]
+
+        return M1, M2, poly_objs, collocation_points, boundaries
+
+    def _solve1d_spectral_collocation(self, n_p, N_x, N_t):
+
+        h_t = self.T/N_t
+        h_x = self.X/N_x
+        identity = np.eye(n_p+1)
+
+        M1, M2, poly_objs, collocation, boundaries = self._pre_calculation_1d_spectral_collocation(n_p)
+
+        rho_vec = np.zeros((N_t+1, n_p))
+        rho_vec[0,:] = self.p0(collocation)
+        M_new = M1 + self.u(0) * M2
+        for i in range(N_t):
+            M_old = M_new
+            M_old[[0,-1],:] = 0.0
+            rho_vec[i+1,:] = M_old @ rho_vec[i,:]
+            M_new = M1 * self.u(h_t * (i+1)) * M2
+            M_new[[0,-1],:] = boundaries[0]
+            M_new[[0,-1],[0,-1]] += boundaries[1] + boundaries[2] * self.u(h_t*(i+1))
+            rho_vec[i+1,:] = np.linalg.solve(M_new, rho_vec[i+1,:])
+            
+        phi_matrix = np.zeros((n_p+1, N_x+1))
+        x = np.arange(0.0, self.X+0.9*h_x, h_x)
+        for k in range(n_p+1):
+            phi_matrix[k,:] = poly_objs[k](x)
+        rho = rho_vec @ phi_matrix
+        return rho
+
     def _solve1d_chang_finite_difference(self, N_x, N_t):
         
         delta, B, rho_0, h_x, h_t = self._pre_calculations_1d_chang_finite_difference(N_x, N_t)
@@ -409,33 +480,35 @@ if __name__ == '__main__':
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
+    FP_equation._pre_calculation_1d_spectral_collocation(n_p=10, N_x=10, N_t=100)
+
     #solving1 = FP_equation.solve1d(N_x=100, N_t=60000, type='forward')
     #solving2 = FP_equation.solve1d(N_x=200, N_t=30000, type='ck')
     #solving3 = FP_equation.solve1d(n_f=21, N_x=100, N_t=30000, type='general_fem')
-    solving4 = FP_equation.solve1d(n_f=500, N_x=500, N_t=30000, type='galerkin_fem')
+    #solving4 = FP_equation.solve1d(n_f=500, N_x=500, N_t=30000, type='galerkin_fem')
     #solving5 = FP_equation.solve1d(N_x=500, N_t=30000, type='chang_cooper')
     
-    x = np.linspace(0, 1, 501)
-    t = np.linspace(0, 1.0, 30001)
-    X, T = np.meshgrid(x,t)
+    #x = np.linspace(0, 1, 501)
+    #t = np.linspace(0, 1.0, 30001)
+    #X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
-    ax = plt.axes(projection='3d')
+    #ax = plt.axes(projection='3d')
     #ax.plot_surface(X, T, solving1)
     #ax.plot_surface(X, T, solving2)
     #ax.plot_surface(X, T, solving3)
-    ax.plot_surface(X, T, solving4)
+    #ax.plot_surface(X, T, solving4)
     #ax.plot_surface(X, T, solving5)
-    ax.set_xlabel('x')
-    ax.set_ylabel('t')
-    ax.set_zlabel('rho')
-    plt.show() 
+    #ax.set_xlabel('x')
+    #ax.set_ylabel('t')
+    #ax.set_zlabel('rho')
+    #plt.show() 
 
     # Plotting the integral of x-axis for each time
     #plt.plot(t, solving1.sum(axis=1)/100, label='forward')
     #plt.plot(t, solving2.sum(axis=1)/200, label='ck')
-    plt.plot(t, solving4.sum(axis=1)/500, label='galerkin')
+    #plt.plot(t, solving4.sum(axis=1)/500, label='galerkin')
     #plt.plot(t, solving5.sum(axis=1)/200, label='chang')
     #plt.legend()
-    plt.show() 
+    #plt.show() 
         
