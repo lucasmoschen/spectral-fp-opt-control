@@ -121,7 +121,7 @@ class FokkerPlanckEquation:
         alpha_x = egrad(self.alpha)
         
         A = np.diag( self.X / (2*np.linspace(0,n_f,n_f+1) + 1))
-        B = self.v*0.25*self.X*np.array([[min(i,j)*(min(i,j)+1)*(1+(-1)**(i+j)) for j in range(n_f+1)] for i in range(n_f+1)])
+        B = self.v*np.array([[min(i,j)*(min(i,j)+1)*(1+(-1)**(i+j)) for j in range(n_f+1)] for i in range(n_f+1)]) / self.X
         C = np.zeros((n_f+1, n_f+1))
         D = np.zeros((n_f+1, n_f+1))
         rho_0 = np.zeros(n_f+1)
@@ -133,14 +133,12 @@ class FokkerPlanckEquation:
                               a=-1, b=1)[0]
             rho_0[i] = (i + 0.5)*quad(func=lambda x: self.p0(0.5*(self.X*x + self.lb+self.ub))*legendre_family[i](x), 
                                       a=-1, b=1)[0]
-        C *= 0.5*self.X
-        D *= 0.5*self.X
 
-        b1 = np.array([self.v * i * (i+1) * (-1)**(i-1) / self.X + (-1)**i * G_x(-1.0) for i in range(n_f+1)])
-        c1 = np.array([self.v * i * (i+1) / self.X + G_x(1.0) for i in range(n_f+1)])
+        b1 = np.array([(-1)**(i-1) * (self.v * i * (i+1) / self.X - G_x(self.lb)) for i in range(n_f+1)])
+        c1 = np.array([self.v * i * (i+1) / self.X + G_x(self.ub) for i in range(n_f+1)])
 
-        b2 = np.array([(-1)**i * alpha_x(-1.0) for i in range(n_f+1)])
-        c2 = np.array([alpha_x(1.0) for i in range(n_f+1)])
+        b2 = np.array([(-1)**i * alpha_x(self.lb) for i in range(n_f+1)])
+        c2 = np.array([alpha_x(self.ub) for i in range(n_f+1)])
 
         boundary_conditions = [b1, c1, b2, c2]
         
@@ -401,10 +399,10 @@ class FokkerPlanckEquation:
 
         for i in tqdm(range(N_t)):
             previous_matrix = (A - 0.5*h_t*(B+C+self.u(h_t*i)*D)) 
-            previous_matrix[[0,-1], :] = 0.0
+            previous_matrix[[-2,-1], :] = 0.0
             rho_vec[i+1,:] = previous_matrix @ rho_vec[i,:]
             next_matrix = A + 0.5*h_t*(B+C+self.u(h_t*(i+1))*D)
-            next_matrix[0,:] = boundary_conditions[0] + self.u((i+1)*h_t) * boundary_conditions[2]
+            next_matrix[-2,:] = boundary_conditions[0] + self.u((i+1)*h_t) * boundary_conditions[2]
             next_matrix[-1,:] = boundary_conditions[1] + self.u((i+1)*h_t) * boundary_conditions[3]
             rho_vec[i+1,:] = np.linalg.solve(next_matrix, rho_vec[i+1,:])
         phi_matrix = np.zeros((n_f+1, N_x+1))
@@ -473,29 +471,29 @@ if __name__ == '__main__':
     control = lambda t: 1.0
     p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     interval = [0.0, 1.0]
-    parameters = {'v': 1.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 1.0, 'T': 5.0, 'p_0': p_0, 'interval': interval}
 
     FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
     #solving1 = FP_equation.solve1d(N_x=100, N_t=60000, type='forward')
-    solving2 = FP_equation.solve1d(N_x=200, N_t=3000, type='ck')
-    solving3 = FP_equation.solve1d(n_f=16, N_x=200, N_t=3000, type='spectral_galerkin')
+    #solving2 = FP_equation.solve1d(N_x=200, N_t=3000, type='ck')
+    solving3 = FP_equation.solve1d(n_f=15, N_x=200, N_t=15000, type='spectral_galerkin')
     #solving4 = FP_equation.solve1d(n_f=500, N_x=500, N_t=30000, type='galerkin_fem')
-    #solving5 = FP_equation.solve1d(N_x=500, N_t=30000, type='chang_cooper')
-    #solving6 = FP_equation.solve1d(n_f=50, N_x=200, N_t=3000, type='spectral_collocation')
+    #solving5 = FP_equation.solve1d(N_x=200, N_t=15000, type='chang_cooper')
+    solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
     
     x = np.linspace(0, 1, 201)
-    t = np.linspace(0, 1, 3001)
+    t = np.linspace(0, 5, 15001)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
     ax = plt.axes(projection='3d')
     #ax.plot_surface(X, T, solving1)
-    ax.plot_surface(X, T, solving2)
+    #ax.plot_surface(X, T, solving2)
     ax.plot_surface(X, T, solving3)
     #ax.plot_surface(X, T, solving4)
     #ax.plot_surface(X, T, solving5)
-    #ax.plot_surface(X, T, solving6)
+    ax.plot_surface(X, T, solving6)
     ax.set_xlabel('x')
     ax.set_ylabel('t')
     ax.set_zlabel('rho')
@@ -504,10 +502,10 @@ if __name__ == '__main__':
     # Plotting the integral of x-axis for each time
     #plt.plot(t, solving1.sum(axis=1)/200, label='forward')
     #plt.plot(t, solving2.sum(axis=1)/200, label='ck')
-    plt.plot(t, solving3.sum(axis=1)/200, label='legendre galerkin')
+    #plt.plot(t, solving3.sum(axis=1)/200, label='legendre galerkin')
     #plt.plot(t, solving4.sum(axis=1)/500, label='galerkin')
     #plt.plot(t, solving5.sum(axis=1)/200, label='chang')
     #plt.plot(t, solving6.sum(axis=1)/200, label='spectral')
     #plt.legend()
-    plt.show() 
+    #plt.show() 
         
