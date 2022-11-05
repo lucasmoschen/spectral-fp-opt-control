@@ -44,19 +44,6 @@ class FokkerPlanckEquation:
         self.ub = float(parameters['interval'][1])
         self.X = self.ub - self.lb
 
-    def _building_family(self):
-        """
-        This function builds a list of functions who will serve as test functions for the general method.
-        """
-        def family(x,n):
-            if n == 0:
-                return self.p0(x)
-            elif n % 2 == 1:
-                return np.sin(2*n*np.pi*x)
-            else:
-                return np.cos(2*n*np.pi*x)
-        return family
-
     def _pre_calculations_1d_forward_finite_difference(self, N_x, N_t):
         """
         Perform the matrix calculations for the 1d solving problem - Forward Difference.
@@ -124,43 +111,40 @@ class FokkerPlanckEquation:
 
         return A1, A2, A3, B1, B2, B3, rho_0, V_x_border
 
-    def _pre_calculations_1d_general_finite_elements(self, n_f, N_t):
+    def _pre_calculations_1d_spectral_galerkin(self, n_f):
         """
-        Perform the matrix calculations for the 1d solving problem - general Finite Elements.
+        Perform the matrix calculations for the 1d solving problem - Spectral Legendre-Galerkin method.
         """
-        h_t = self.T/N_t
-
-        family = self._building_family()
+        legendre_family = [legendre(k) for k in range(n_f+1)]
+        legendre_family_diff = [np.polyder(poly, 1) for poly in legendre_family]
         G_x = egrad(self.G)
         alpha_x = egrad(self.alpha)
-        V_x = lambda x,t: G_x(x) + alpha_x(x) * self.u(t)
-        diff = lambda n: grad(lambda x: family(x,n))
         
-        A = np.zeros((n_f, n_f))
-        B = np.zeros((n_f, n_f))
-        a = np.zeros(n_f)
-        b = np.zeros(n_f)
-        c = np.zeros(n_f)
+        A = np.diag( self.X / (2*np.linspace(0,n_f,n_f+1) + 1))
+        B = self.v*0.25*self.X*np.array([[min(i,j)*(min(i,j)+1)*(1+(-1)**(i+j)) for j in range(n_f+1)] for i in range(n_f+1)])
+        C = np.zeros((n_f+1, n_f+1))
+        D = np.zeros((n_f+1, n_f+1))
+        rho_0 = np.zeros(n_f+1)
+        for i in tqdm(range(n_f+1)):
+            for j in range(n_f+1):
+                C[i,j] = quad(func=lambda x: G_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
+                              a=-1, b=1)[0]
+                D[i,j] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
+                              a=-1, b=1)[0]
+            rho_0[i] = (i + 0.5)*quad(func=lambda x: self.p0(0.5*(self.X*x + self.lb+self.ub))*legendre_family[i](x), 
+                                      a=-1, b=1)[0]
+        C *= 0.5*self.X
+        D *= 0.5*self.X
 
-        for i in tqdm(range(n_f)):
-            a[i] = quad(lambda x: self.p0(x) * family(x,i), a=self.lb, b=self.ub)[0]
-            b[i] = self.v * diff(i)(self.lb) + family(self.lb, i) * V_x(self.lb, 0)
-            c[i] = self.v * diff(i)(self.ub) + family(self.ub, i) * V_x(self.ub, 0)
-            for j in range(i,n_f):
-                A[i,j] = quad(func=lambda x: family(x,i) * family(x,j), a=self.lb, b=self.ub)[0]
-                A[j,i] = A[i,j]
-                B[i,j] = -quad(func=lambda x: (self.v * diff(j)(x) + V_x(x,0) * family(x,j)) * diff(i)(x), a=self.lb, b=self.ub)[0]
-                B[j,i] = -quad(func=lambda x: (self.v * diff(i)(x) + V_x(x,0) * family(x,i)) * diff(j)(x), a=self.lb, b=self.ub)[0]
+        b1 = np.array([self.v * i * (i+1) * (-1)**(i-1) / self.X + (-1)**i * G_x(-1.0) for i in range(n_f+1)])
+        c1 = np.array([self.v * i * (i+1) / self.X + G_x(1.0) for i in range(n_f+1)])
 
-        next_matrix = A - 0.5*h_t*B
-        previous_matrix = A + 0.5*h_t*B
-        previous_matrix[[0,-1],:] = 0.0
-        next_matrix[0,:] = b
-        next_matrix[-1,:] = c
+        b2 = np.array([(-1)**i * alpha_x(-1.0) for i in range(n_f+1)])
+        c2 = np.array([alpha_x(1.0) for i in range(n_f+1)])
 
-        rho_0 = np.linalg.solve(A, a)
-
-        return previous_matrix, next_matrix, rho_0, family
+        boundary_conditions = [b1, c1, b2, c2]
+        
+        return A, B, C, D, rho_0, legendre_family, boundary_conditions
 
     def _pre_calculations_1d_galerkin_finite_elements(self, n_f, N_t):
         """
@@ -267,6 +251,9 @@ class FokkerPlanckEquation:
         return A, B, C, D, b, c, rho_0, h_f
 
     def _pre_calculations_1d_chang_finite_difference(self, N_x, N_t):
+        """
+        Perform the matrix calculations for the 1d solving problem - Finite Differences by Chang.
+        """
 
         h_x = self.X/N_x
         h_t = self.T/N_t
@@ -287,6 +274,9 @@ class FokkerPlanckEquation:
         return delta, B, rho_0, h_x, h_t
 
     def _pre_calculation_1d_spectral_collocation(self, n_p):
+        """
+        Perform the matrix calculations for the 1d solving problem - Collocation method and spectral.
+        """
 
         G_x = egrad(self.G)
         alpha_x = egrad(self.alpha)
@@ -400,22 +390,27 @@ class FokkerPlanckEquation:
             rho[i+1,:] = np.linalg.solve(A, rho[i+1,:])
         return rho
 
-    def _solve1d_general_finite_elements(self, n_f, N_x, N_t):
+    def _solve1d_spectral_galerkin(self, n_f, N_x, N_t):
         
-        previous_matrix, next_matrix, rho_0, family = self._pre_calculations_1d_general_finite_elements(n_f, N_t)
+        A, B, C, D, rho_0, legendre_family, boundary_conditions = self._pre_calculations_1d_spectral_galerkin(n_f)
         h_t = self.T/N_t
         h_x = self.X/N_x
 
-        rho_vec = np.zeros((N_t+1, n_f))
+        rho_vec = np.zeros((N_t+1, n_f+1))
         rho_vec[0,:] = rho_0
 
         for i in tqdm(range(N_t)):
+            previous_matrix = (A - 0.5*h_t*(B+C+self.u(h_t*i)*D)) 
+            previous_matrix[[0,-1], :] = 0.0
             rho_vec[i+1,:] = previous_matrix @ rho_vec[i,:]
+            next_matrix = A + 0.5*h_t*(B+C+self.u(h_t*(i+1))*D)
+            next_matrix[0,:] = boundary_conditions[0] + self.u((i+1)*h_t) * boundary_conditions[2]
+            next_matrix[-1,:] = boundary_conditions[1] + self.u((i+1)*h_t) * boundary_conditions[3]
             rho_vec[i+1,:] = np.linalg.solve(next_matrix, rho_vec[i+1,:])
-        phi_matrix = np.zeros((n_f, N_x+1))
-        x = np.arange(self.lb, self.ub+0.9*h_x, h_x)
-        for k in range(n_f):
-            phi_matrix[k,:] = family(x, k)
+        phi_matrix = np.zeros((n_f+1, N_x+1))
+        x = np.arange(-1.0, 1.0+1.8/N_x, 2/N_x)
+        for k in range(n_f+1):
+            phi_matrix[k,:] = legendre_family[k](x)
         rho = rho_vec @ phi_matrix
 
         return rho
@@ -463,8 +458,8 @@ class FokkerPlanckEquation:
             rho = self._solve1d_ck_finite_difference(N_x, N_t)
         elif type == 'chang_cooper':
             rho = self._solve1d_chang_finite_difference(N_x, N_t)
-        elif type == 'general_fem':
-            rho = self._solve1d_general_finite_elements(n_f, N_x, N_t)
+        elif type == 'spectral_galerkin':
+            rho = self._solve1d_spectral_galerkin(n_f, N_x, N_t)
         elif type == 'galerkin_fem':
             rho = self._solve1d_galerkin_finite_elements(n_f, N_x, N_t)
         elif type == 'spectral_collocation':
@@ -484,10 +479,10 @@ if __name__ == '__main__':
 
     #solving1 = FP_equation.solve1d(N_x=100, N_t=60000, type='forward')
     solving2 = FP_equation.solve1d(N_x=200, N_t=3000, type='ck')
-    #solving3 = FP_equation.solve1d(n_f=21, N_x=100, N_t=30000, type='general_fem')
+    solving3 = FP_equation.solve1d(n_f=16, N_x=200, N_t=3000, type='spectral_galerkin')
     #solving4 = FP_equation.solve1d(n_f=500, N_x=500, N_t=30000, type='galerkin_fem')
     #solving5 = FP_equation.solve1d(N_x=500, N_t=30000, type='chang_cooper')
-    solving6 = FP_equation.solve1d(n_f=10, N_x=200, N_t=3000, type='spectral_collocation')
+    #solving6 = FP_equation.solve1d(n_f=50, N_x=200, N_t=3000, type='spectral_collocation')
     
     x = np.linspace(0, 1, 201)
     t = np.linspace(0, 1, 3001)
@@ -497,21 +492,22 @@ if __name__ == '__main__':
     ax = plt.axes(projection='3d')
     #ax.plot_surface(X, T, solving1)
     ax.plot_surface(X, T, solving2)
-    #ax.plot_surface(X, T, solving3)
+    ax.plot_surface(X, T, solving3)
     #ax.plot_surface(X, T, solving4)
     #ax.plot_surface(X, T, solving5)
-    ax.plot_surface(X, T, solving6)
+    #ax.plot_surface(X, T, solving6)
     ax.set_xlabel('x')
     ax.set_ylabel('t')
     ax.set_zlabel('rho')
     plt.show() 
 
     # Plotting the integral of x-axis for each time
-    #plt.plot(t, solving6.sum(axis=1)/200, label='forward')
+    #plt.plot(t, solving1.sum(axis=1)/200, label='forward')
     #plt.plot(t, solving2.sum(axis=1)/200, label='ck')
+    plt.plot(t, solving3.sum(axis=1)/200, label='legendre galerkin')
     #plt.plot(t, solving4.sum(axis=1)/500, label='galerkin')
     #plt.plot(t, solving5.sum(axis=1)/200, label='chang')
-    plt.plot(t, solving6.sum(axis=1)/200, label='spectral')
+    #plt.plot(t, solving6.sum(axis=1)/200, label='spectral')
     #plt.legend()
     plt.show() 
         
