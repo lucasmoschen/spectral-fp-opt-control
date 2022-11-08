@@ -552,6 +552,42 @@ class FokkerPlanckEquation:
             rho = self._solve1d_spectral_collocation(n_f, N_x, N_t)
         return rho
 
+class ControlFPequation:
+
+    def __init__(self, G_func, alpha_func, control, parameters) -> None:
+        """
+        Consider the equation 
+        p_t = v * delta p + nabla . (p * nabla (G + alpha * u))  
+
+        Parameters
+        ----
+        G_func: The function G with is the potential function without the control. 
+                It is a function whose parameter is a vector x and returns a single-value.
+        alpha_func: The function alpha, which indicates the shape control in the space. 
+                It is a function whose parameter is a vector x and returns a single-value.
+        control: The function u, which measures the used control in the model.
+                It is a function whose parameter is a positive real t and returns a single value.
+        parameters: Dictionary with additional fixed parameters: v (rate), T (final time), p_0 (initial function) and interval.
+        """
+        self.G = G_func
+        self.alpha = alpha_func
+        self.u = control
+        self.v = parameters['v']
+        self.T = parameters['T']
+        self.p0 = parameters['p_0']
+        self.lb = float(parameters['interval'][0])
+        self.ub = float(parameters['interval'][1])
+        self.X = self.ub - self.lb
+        self.p_infty = self._calculus_steady_state()
+
+    def _calculus_steady_state(self):
+        """
+        The steady state is p(x) = c e^(-G(x)/v) where c is chosen so as to p(x) has integral equal to 1.
+        """
+        c = 1/quad(lambda x: np.exp(-self.G(x)/self.v), a=self.lb, b=self.ub)[0]
+        p_infty = lambda x: c*np.exp(-self.G(x)/self.v)
+        return p_infty
+
 if __name__ == '__main__':
 
     G_func = lambda x: x*x
