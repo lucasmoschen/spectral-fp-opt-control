@@ -541,7 +541,7 @@ class ControlFPequation:
         y0_L = np.zeros(n_f+1)
         for i in range(n_f+1):
             for j in range(n_f+1):
-                L_dot[i,j] = 0.5*min(i,j)*(min(i,j)+1)*(1+(-1)**(i+j))
+                L_dot[i,j] = min(i,j)*(min(i,j)+1)*((i+j)%2==0)
                 G_dot_L[i,j] = quad(func=lambda x: G_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
                                     a=-1, b=1)[0]
                 alpha_dot_L[i,j] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
@@ -582,7 +582,7 @@ class ControlFPequation:
         A = -(Lambda + Theta1)
         B = -v.reshape((-1,1))
         # Supposes M is the identity transform.
-        Pi = self._solve_ricatti(A, B, Lambda)
+        Pi = self._solve_ricatti(A, B, Phi)
         Phi_inv = np.linalg.inv(Phi)
 
         h_t = self.T/N_t
@@ -604,6 +604,7 @@ class ControlFPequation:
         for k in range(n_f-1):
             phi_matrix[k,:] = legendre_family[k](x) + coef[k,0]*legendre_family[k+1](x) + + coef[k,1]*legendre_family[k+2](x)
         y = y_vec @ phi_matrix
+
         return y      
 
 if __name__ == '__main__':
@@ -613,7 +614,7 @@ if __name__ == '__main__':
     control = lambda t: 1.0
     p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     interval = [0.0, 1.0]
-    parameters = {'v': 1.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 0.5, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
     #FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
