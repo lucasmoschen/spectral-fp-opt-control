@@ -5,8 +5,10 @@
 \usepackage{setspace}
 
 \usepackage{amsmath, amssymb, amsfonts, amsthm}
+\usepackage{cancel}
 \usepackage{graphicx, float}
 \usepackage{hyperref}
+\usepackage{enumerate}
 
 \title{Fokker-Plank equation}
 \author{Lucas Moschen}
@@ -14,7 +16,14 @@
 
 % mathematical definitions 
 \newcommand{\R}{\mathbb{R}}
-\newcommand{\N}{\mathbb{N}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\A}{\mathcal{A}}
+\newcommand{\B}{\mathcal{B}}
+\renewcommand{\P}{\mathcal{P}}
+\newcommand{\Q}{\mathcal{Q}}
+\newcommand{\n}{\vec{n}}
+\newcommand{\steady}{\rho_{\infty}}
+\newcommand{\inner}[2]{\langle{} #1, #2 \rangle{}}
 
 \newtheorem{theorem}{Theorem}[subsection]
 \newtheorem{proposition}{Proposition}[subsection]
@@ -45,19 +54,317 @@ This list is part of the notation we use throughout the text:
 
 \begin{itemize}
     \item $\langle X \rangle = \mathbb{E}[X]$ is the expected value of the random variable $X$.
+    \item For $f, g \in H^1(\Omega)$, we define $\langle f, g \rangle = \int_{\Omega} f(x) g(x) \, dx$
 \end{itemize}
 
-\section{Stochastic Differential Equations}
-\input{sde.tex}
+\section{Introduction}
+
+Consider the Stochastic Differential Equation
+\[
+dX_t = -\nabla V(x,t) \, dt + \sqrt{2\nu} dB_t.
+\]
+The probability density function $\rho$ of the process ${\{X_t\}}_{t \in \R_+}$ is the solution of 
+\[
+\rho_t(x,t) = \nabla \cdot J(x,t), \text{ where } J(x,t) = \nu \nabla \rho(x,t) + \rho(x,t) \nabla V(x,t), (x,t) \in \Omega \times (0,+\infty), 
+\]
+subject to $J(x,t) \cdot \n = 0$ on $\partial \Omega \times (0,+\infty)$ and $\rho(x,0) = \rho_0(x)$ in $\Omega$. 
+Consider the potential 
+\[
+V(x,t) = G(x) + u(t) \alpha(x),
+\]
+such that $u$ is a control function and $\alpha$ is a control shape function that satisfies $\nabla \alpha \cdot \n = 0$ on $\partial \Omega$.
+With that, we get that the boundary condition reduces to
+\[
+0 = (\nu \nabla \rho + \rho \nabla V) \cdot \n = \nu (\nabla \rho) \cdot \n + \rho (\nabla G) \cdot \n + \cancel{u~\rho (\nabla \alpha) \cdot \n},
+\]
+witch implies that 
+\[
+(\nu \nabla \rho + \rho \nabla G) \cdot \n = 0 \text{ on } \partial \Omega.
+\]
+
+Let $\steady$ be the steady state for the uncontrolled system, i.e., the function that solves 
+\[
+\nabla \cdot (\nu \nabla \steady + \steady \nabla G) = 0 \text{ in } \Omega \times (0,\infty),
+\]
+subject to $(\nu \nabla \steady + \steady \nabla G) \cdot \n = 0$ on $\partial \Omega$.
+Define $y = \rho - \steady$.
+The problem turns to 
+\[
+\begin{split}
+    y_t &= \nabla \cdot \left[\nu \nabla (y + \steady) + (y + \steady) \nabla V\right] \\
+    &= \nabla \cdot \left(\nu \nabla y + y \nabla V + u\nabla \alpha \steady\right) + \cancel{\nabla \cdot (\nu \nabla \steady + \steady \nabla G)},
+\end{split}
+\]
+in $\Omega \times (0,\infty)$ subject to 
+\[
+0 = (\nu \nabla (y + \steady) + (y + \steady)\nabla G) \cdot \n = (\nu \nabla y + y\nabla G) \cdot \n \text{ on } \partial \Omega 
+\]
+and $y(x,0) = \rho_0(x) - \steady(x)$ in $\Omega$.
+We can write the above problem as a bilinear control system 
+\[
+\dot{y} = \mathcal{A} y + u\mathcal{N}y + \mathcal{B} u, \quad y(0) = y_0,
+\]
+where $\mathcal{B} = \mathcal{N} \steady$.
+
+The first feedback strategy is based on the cost functional 
+\[
+\mathcal{J}(y, u) = \frac{1}{2}\int_0^{\infty} \langle y, \mathcal{M} y \rangle + |u|^2 \, dt,    
+\]
+and it is obtained solving the Riccatti Equation
+\[
+\mathcal{A}^*\Pi + \Pi\mathcal{A} - \Pi\mathcal{B}\mathcal{B}^*\Pi + \mathcal{M} = 0
+\]
+and $u = -\mathcal{B}^{*}\Pi y$.
+
+The second strategy is based on the solution $\Gamma$ to a Lyapunov equation
+\[
+\mathcal{A}^* \Upsilon + \Upsilon \mathcal{A} + 2 \mu I = 0,   
+\]
+for a properly chosen parameter $\mu > 0$.
+
+Some additional references:
+
+\begin{itemize}
+    \item~\cite{bris2008existence}: covers the existence and the uniqueness of a class of Fokker-Planck equations with coefficients in Sobolov spaces $W^{1,p}$.
+    \item~\cite{huang2015steady}: existence of steady state of Fokker-Planck equation in $\Omega \subseteq \R^n$.
+\end{itemize}
+
+\section{Well-posedness}
+
+We search for a solution $\rho \in W(0,T) = L^2(0,T; H^1(\Omega)) \cap H^1(0, t; {(H^1(\Omega))}^*)$ and 
+\[
+\inner{\rho_t}{\phi} + \inner{\nu\nabla \rho(t) + \rho(t)\nabla G}{\nabla \phi} + u(t)\inner{\rho(t)\nabla \alpha}{\nabla \phi} = 0, \forall \phi \in H^1(\Omega),
+\]
+where integration by parts was applied.
+It is assumed that 
+\[
+G, \alpha \in W^{1,\infty}(\Omega) \cap W^{2,\max(2,n)}(\Omega).
+\]
+With that in mind, is possible to prove that for every $u \in L^2(0,T)$ and $\rho_0 \in L^2(\Omega)$, there exists an unique solution to Fokker-Planck equation.
+
+Moreover the solution satisfies
+\begin{enumerate}[(i)]
+    \item For every $t \in [0,T]$, we have that $\inner{\rho(t) - \rho_0}{1_{\Omega}} = 0$.
+    \item If $\rho_0 \ge 0$ almost everywhere on $\Omega$, then $\rho(x,t) \ge 0$ for all $t > 0$ and almost all $x \in \Omega$.
+\end{enumerate}
+
+\section{Operator form}
+
+Define the operators 
+\[
+\begin{split}
+    \mathcal{A} &: \mathcal{D}(\mathcal{A}) \to L^2(\Omega), \\
+    &\mathcal{D}(\mathcal{A}) = \{\rho \in H^2(\Omega) : (\nu \nabla \rho + \rho \nabla G) \cdot \n = 0 \text{ on } \partial \Omega\} \\
+    &\mathcal{A} \rho = \nu \Delta \rho + \nabla \cdot (\rho \nabla G),   
+\end{split}
+\]
+and
+\[
+\mathcal{N} : H^1(\Omega) \to L^2(\Omega), \mathcal{N}\rho = \nabla \cdot (\rho \nabla \alpha).    
+\]
+The adjoint operators are well-defined and given by 
+\[
+\mathcal{A}^*\varphi = \nu \Delta \varphi - \nabla G \cdot \nabla \varphi, (\nu \nabla \varphi) \cdot \n = 0 \text{ on } \partial \Omega    
+\]
+and 
+\[
+\mathcal{N}^* \varphi = - \nabla \varphi \cdot  \nabla \alpha. 
+\]
+
+Considering the uncontrolled system $\dot{\rho} = \mathcal{A} \rho$, introduce the function $\Phi(x) = \log \nu + \frac{G(x)}{\nu}$.
+Further, define the operator $\mathcal{A}_s = e^{\Phi/2}\mathcal{A}e^{-\Phi/2}$.
+Then,
+\[
+\mathcal{A}\left(e^{-\Phi/2} \rho \right) = \nu e^{-\Phi/2}\left(\Delta \rho + \frac{1}{2}\rho\Delta \Phi - \frac{1}{4}\rho \nabla \Phi \cdot \nabla \Phi \right).
+\]
+The following results can be obtained:
+\begin{itemize}
+    \item $\mathcal{A}_s$ is self-adjoint.
+    \item The spectrum $\sigma(\mathcal{A}_s)$ consists of non-positive pure points with $0 \in \sigma(\mathcal{A}_s)$.
+    \item The eigenfunctions ${\{\psi_i\}}_{i=0}^{\infty}$ form a complete orthogonal set.
+    \item $\sigma(\mathcal{A}_s) = \sigma(\mathcal{A})$ and $\psi_i$ is eigenfunction of $\mathcal{A}$ iff $e^{\Psi/2}\psi_i$ is eigenfunction of $\mathcal{A}_s$. 
+    \item $\psi_i$ is eigenfunction of $\mathcal{A}$ iff $e^{\Psi}\psi_i$ is eigenfunction of $\mathcal{A}^*$. 
+    \item $\steady = ce^{-\Phi}$ is eigenfunction of $\mathcal{A}$ associated with the eigenvalue $0$.
+\end{itemize}
+
+\subsection{Decoupling the Fokker-Planck equation}
+
+Consider the projection transform $\mathcal{P}$ onto $1^{\perp}$ along $\steady$, written as 
+\[
+\mathcal{P}y = y - \int_{\Omega} y \, dx \steady,    
+\]
+and its complementary $\mathcal{Q}y = (I-\mathcal{P})y$.
+If $y \in \mathcal{Y}$, we can decompose $\mathcal{Y} = im(\mathcal{P}) \oplus im(\mathcal{Q})$, which implies $y = \mathcal{P}y + \mathcal{Q}y = y_{\mathcal{P}} + y_{\mathcal{Q}}$.
+Therefore, Fokker-Planck equation turns to
+\[
+\dot{y}_{\P} + \dot{y}_{\Q} = \mathcal{A}(y_{\P} + y_{\Q}) + u\N(y_{\P} + y_{\Q}) + \B u.
+\]
+Applying $\P$ and $\Q$ to this equation and noticing that $\P(\P y) = \P y, \Q(\Q y) = \Q y, \P(\Q y) = \Q(\P y) = 0$, we get the system
+\[
+\begin{bmatrix}
+    \dot{y}_{\P} \\ \dot{y}_{\Q} 
+\end{bmatrix} = \begin{bmatrix}
+    \P\A & 0 \\ 0 & 0 
+\end{bmatrix}\begin{bmatrix}
+    y_{\P} \\ y_{\Q} 
+\end{bmatrix} + u\begin{bmatrix}
+    \P\N & \P\N \\ 0 & 0 
+\end{bmatrix}\begin{bmatrix}
+    y_{\P} \\ y_{\Q} 
+\end{bmatrix} + u\begin{bmatrix}
+    \P\B \\ 0
+\end{bmatrix},
+\]
+where other identities were also used.
+
+\section{Ricatti-based feedback control}
+
+It is considered the linearised version of the system, that is, $uNy$ term is dropped.
+In this section, they derive the Ricatti equation.
+
+\section{Methods for solving a PDE}
+
+\begin{enumerate}[(a)]
+    \item Finite differences:~\cite{chang1970practical} build a scheme where positivity and conservation of mass are maintained.
+    \item Finite elements
+    \item Collocation methods, which is a spectral method in the strong sense
+    \item Spectral-Legendre method
+\end{enumerate}
+
+The equation we are trying to solve is 
+\[
+y_t = \nabla \cdot (\nu \nabla y + y \nabla G + u y \nabla \alpha + u \steady \nabla \alpha),
+\]
+subject to $(\nu \nabla y + y \nabla G) \cdot \n = 0$ in the boundary and $y = \rho_0 - \steady$ as initial condition.
+In the weak formulation, for every $\phi \in H^1(\Omega)$, we have
+\[
+\inner{y_t}{\phi} = -\inner{\nu \nabla y + y \nabla G}{\nabla \phi} - u(t)\inner{\nabla \alpha y}{\nabla \phi} - u(t)\inner{ \nabla \alpha \steady}{\nabla \phi}.
+\]
+
+\subsection{Spectral-Legendre method}
+
+Let us consider the one-dimensional case for now: $\Omega = [a,b]$.
+To simplify future calculations, we consider the variable
+\[
+\tilde{y}(x,t) = y\left(\left(\frac{b-a}{2}\right)x + \left(\frac{a+b}{2}\right), t\right), \forall x \in [-1,1], t > 0.    
+\]
+We do the same for $G$, $\alpha$ and $\steady$. 
+For sake of conciseness, we drop $\sim$ for now.
+The formulation turns to 
+\[
+\inner{y_t}{\phi} = - {\left(\frac{2}{b-a}\right)}^2\inner{\nu y_x + y \dot{G} + u y \dot{\alpha} + u\steady \dot{\alpha}}{\dot{\phi}}.
+\]
+
+Consider the space 
+\[
+X_n = \{\phi \in P_n : \nu \dot{\phi}(\pm 1) + \phi(\pm 1) \dot{G}(\pm 1) = 0\},
+\]
+where $P_n$ is the space of polynomials with degree up to $n$.
+Notice that $\dim(X_n) = n-1$.
+Let ${\{\phi_i\}}_{i=0}^{n-2}$ be a basis for $X_n$ and write 
+\[
+y(x,t) \approx \sum_{j=0}^{n-2} y_j(t) \phi_j(x). 
+\]
+Considering the set of test equal to the trial functions, we get in the following formulation
+\[
+\begin{split}
+    \sum_{j=0}^{n-2} \dot{y}_j(t) \inner{\phi_j}{\phi_i} = -{\left(\frac{2}{b-a}\right)}^2 &\sum_{j=0}^{n-2} y_j(t) \left(\nu \inner{\dot{\phi}_j}{\dot{\phi}_i} + \inner{\dot{G} \phi_j}{\dot{\phi}_i} + u(t)\inner{\dot{\alpha}\phi_j}{\dot{\phi}_i} \right) \\ 
+    &+ u(t) \inner{\dot{\alpha} \steady}{\dot{\phi}_i},
+\end{split}
+\]
+which can be rewritten as a system of ODEs:
+\[
+\Phi \dot{y}(t) = -{\left(\frac{2}{b-a}\right)}^2 (\Lambda + \Theta^1 + u(t)\Theta^2)y(t) -\frac{2}{b-a}u(t)v.    
+\]
+Following the suggestion from $\cite[p.7]{shen2011spectral}$, we consider
+\[
+\phi_k(x) = L_k(x) + \alpha_k L_{k+1}(x) + \beta_k L_{k+2}(x),    
+\]
+where $L_k$ is the Legendre polynomial of degree $k$ and the coefficients chosen as to satisfy the boundary conditions. 
+Let us calculate this quantities:
+
+\scalebox{0.85}{$
+\nu (\dot{L}_k(\pm 1) + \alpha_k \dot{L}_{k+1}(\pm 1) + \beta_k \dot{L}_{k+2}(\pm 1)) + \dot{G}(\pm 1)(L_k(\pm 1) + \alpha_k L_{k+1}(\pm 1) + \beta_k L_{k+2}(\pm 1)) = 0.
+$}
+
+which can be written in matrix formulation
+\[
+\begin{bmatrix}
+    \nu (k+1)(k+2) - 2g_{-} & -\nu (k+2)(k+3) + 2g_- \\
+    \nu (k+1)(k+2) + 2g_+ & \nu (k+2)(k+3) + 2g_+
+\end{bmatrix}\begin{bmatrix}
+    \alpha_k \\ \beta_k
+\end{bmatrix} = \begin{bmatrix}
+    \nu k(k+1) - 2g_- \\ -\nu k(k+1) - 2g_+
+\end{bmatrix},
+\]
+where $g_{\pm} = \dot{G}(\pm 1)$ and the system is numerically solved.
+
+Let's now pre-calculate the matrices in terms of the legendre polynomials.
+
+\[
+\begin{split}
+    \Phi_{ij} = \inner{\phi_i}{\phi_j} &= \inner{L_i}{L_j} + \alpha_i\inner{L_{i+1}}{L_j} + \beta_i\inner{L_{i+2}}{L_j} \\
+    &+ \alpha_j\inner{L_i}{L_{j+1}} + \alpha_i\alpha_j\inner{L_{i+1}}{L_{j+1}} + \beta_i\alpha_j\inner{L_{i+2}}{L_{j+1}} \\
+    &+ \beta_j\inner{L_i}{L_{j+2}} + \alpha_i\beta_j\inner{L_{i+1}}{L_{j+2}} + \beta_i\beta_j\inner{L_{i+2}}{L_{j+2}} \\
+    &= 2\frac{\delta_{ij}}{2i + 1} + 2\alpha_i\frac{\delta_{i+1,j}}{2(i+1) + 1} + \beta_i\frac{\delta_{i+2,j}}{2(i+2) + 1} \\
+    &= 2\alpha_j\frac{\delta_{i,j+1}}{2i + 1} + 2\alpha_i\alpha_j\frac{\delta_{ij}}{2(i+1) + 1} + 2\beta_i\alpha_j\frac{\delta_{i+1,j}}{2(i+2) + 1} \\
+    &= 2\beta_j\frac{\delta_{i,j+2}}{2i + 1} + 2\alpha_i\beta_j\frac{\delta_{i,j+1}}{2(i+1) + 1} + 2\beta_i\beta_j\frac{\delta_{ij}}{2(i+2) + 1}
+\end{split}
+\]
+\[
+\begin{split}
+    \Lambda_{ij} = \nu\inner{\dot\phi_i}{\dot\phi_j} &= \nu[\inner{\dot L_i}{\dot L_j} + \alpha_i\inner{\dot L_{i+1}}{\dot L_j} + \beta_i\inner{\dot L_{i+2}}{\dot L_j} \\
+    &+ \alpha_j\inner{\dot L_i}{\dot L_{j+1}} + \alpha_i\alpha_j\inner{\dot L_{i+1}}{\dot L_{j+1}} + \beta_i\alpha_j\inner{\dot L_{i+2}}{\dot L_{j+1}} \\
+    &+ \beta_j\inner{\dot L_i}{\dot L_{j+2}} + \alpha_i\beta_j\inner{\dot L_{i+1}}{\dot L_{j+2}} + \beta_i\beta_j\inner{\dot L_{i+2}}{\dot L_{j+2}}],
+\end{split}
+\]
+where $\inner{\dot L_i}{\dot L_j} = L_{\max(i,j)}(1) \dot L_{\min(i,j)}(1) - L_{\max(i,j)}(-1) \dot L_{\min(i,j)}(-1)$, integrating by parts and observing that Legendre polynomials are orthogonal to other polynomials with smaller degree.
+Therefore, 
+\[
+\inner{\dot L_i}{\dot L_j} = \frac{1}{2} \min(i,j) (\min(i,j) + 1)\left(1 + {(-1)}^{i+j}\right).
+\]
+Finally, we calculate
+\[
+\Theta^1_{ij} = \inner{\dot{G} \phi_j}{\dot \phi_i}, \Theta^2_{ij} = \inner{\dot{\alpha} \phi_j}{\dot \phi_i} \text{ and } v_i = \inner{\dot\alpha \steady}{\dot\phi_i}    
+\]
+
+This is the method of solving the PDE.\@
+Before solving it, we need to compute the optimal control.
+For that, we have to discretise the operators $\A, \B$ and $\mathcal{M}$:
+
+The discretised versions are 
+\[
+A_{ij} = \inner{\A \phi_j}{\phi_i} = -\inner{\nu \dot \phi_j + \dot G \phi_j}{\dot \phi_i} = -\Lambda_{ij} - \Theta^1_{ij} \implies A = -(\Lambda + \Theta^1) 
+\]
+and 
+\[
+B_{i} = \inner{\B\cdot 1}{\phi_i} = -v_i \implies B = -v.
+\]
+With that in mind, we have to solve the discrete Ricatti equation
+\[
+A^T\Pi + \Pi A + \Pi B B^T \Pi + M = 0.
+\]
+with $u(t) = -B^T\Pi y(t)$. 
+With this feedback, we solve
+\[
+\begin{split}
+    \Phi \dot{y} &= {\left(\frac{2}{b-a}\right)}^2(A + \Theta^2B^T\Pi y(t) )y(t) - {\left(\frac{2}{b-a}\right)}^2BB^T\Pi y(t) \\ 
+    &= {\left(\frac{2}{b-a}\right)}^2(A - BB^T\Pi  + \Theta^2B^T\Pi y(t))y(t).
+\end{split}
+\]
+After solving this system, we have to come back to the original coordinate system.
+
+\begin{remark}
+    Notice that $M_{ij} = \inner{\mathcal{M} \phi_j}{\phi_i}$.
+    For instance, if $\mathcal{M}$ is the identity operator, we have $M = \Lambda$.
+\end{remark}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                 Bibliografia                %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\begin{thebibliography}{9}
-    \bibitem{main-book}
-
-\end{thebibliography}
-
+\bibliographystyle{plain}
+\bibliography{biblio.bib}
 
 \end{document}

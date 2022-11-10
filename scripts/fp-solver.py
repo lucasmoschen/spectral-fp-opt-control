@@ -4,9 +4,9 @@
 import autograd.numpy as np 
 from autograd import elementwise_grad as egrad, grad
 
-from scipy.integrate import quad
+from scipy.integrate import quad, solve_ivp
 from scipy.stats import norm
-from scipy.linalg import solve_banded
+from scipy.linalg import solve_banded, solve_continuous_are
 from scipy.special import legendre
 from scipy.interpolate import lagrange
 
@@ -43,94 +43,6 @@ class FokkerPlanckEquation:
         self.lb = float(parameters['interval'][0])
         self.ub = float(parameters['interval'][1])
         self.X = self.ub - self.lb
-
-    def _solve_system_coefs_spectral_modified(self, n_f, t, Gxl, Gxu, axl, axu):
-
-        coef = np.zeros((n_f-1,2))
-        for k in range(n_f-1):
-            M = np.array([
-                [-self.v/self.X * (k+1) * (k+2) + Gxl + self.u(t)*axl, self.v/self.X * (k+2) * (k+3) - Gxl - self.u(t)*axl],
-                [self.v/self.X * (k+1) * (k+2) + Gxu + self.u(t)*axu, self.v/self.X * (k+2) * (k+3) + Gxl + self.u(t)*axl],
-            ])
-            m = np.array([-self.v/self.X * k * (k+1) + Gxl + self.u(t) * axl, -self.v/self.X * k * (k+1) - Gxu - self.u(t) * axu])
-            coef[k] = np.linalg.solve(M, m)
-        return coef
-
-    def _pre_calculations_1d_spectral_modified(self, n_f):
-        """
-        Perform the matrix calculations for the 1d solving problem - Spectral Legendre-Galerkin method.
-        """
-        legendre_family = [legendre(k) for k in range(n_f+1)]
-        legendre_family_diff = [np.polyder(poly, 1) for poly in legendre_family]
-        G_x = egrad(self.G)
-        alpha_x = egrad(self.alpha)
-
-        # Calculate matrix A
-        A0 = np.diag( self.X / (2*np.linspace(0,n_f-2,n_f-1) + 1), 0)
-        A1 = np.diag( self.X / (2*np.linspace(1,n_f-2,n_f-2) + 1), -1)
-        A2 = np.diag( self.X / (2*np.linspace(2,n_f-2,n_f-3) + 1), -2)
-        A3 = np.diag( self.X / (2*np.linspace(1,n_f-2,n_f-2) + 1), 1)
-        A4 = np.diag( self.X / (2*np.linspace(0,n_f-2,n_f-1) + 3), 0)
-        A5 = np.diag( self.X / (2*np.linspace(1,n_f-2,n_f-2) + 3), -1)
-        A6 = np.diag( self.X / (2*np.linspace(2,n_f-2,n_f-3) + 1), 2)
-        A7 = np.diag( self.X / (2*np.linspace(1,n_f-2,n_f-2) + 3), 1)
-        A8 = np.diag( self.X / (2*np.linspace(0,n_f-2,n_f-1) + 5), 0)
-        A = [A0, A1, A2, A3, A4, A5, A6, A7, A8]
-
-        # Calculate matrix B
-        B = self.v*np.array([[min(i,j)*(min(i,j)+1)*(1+(-1)**(i+j)) for j in range(n_f+1)] for i in range(n_f+1)]) / self.X
-
-        # Calculate matrices C and D
-        C = np.zeros((n_f+1, n_f+1))
-        D = np.zeros((n_f+1, n_f+1))
-        b = np.zeros(n_f+1)
-        for i in tqdm(range(n_f+1)):
-            for j in range(n_f+1):
-                C[i,j] = quad(func=lambda x: G_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
-                              a=-1, b=1)[0]
-                D[i,j] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
-                              a=-1, b=1)[0]
-            b[i] = 0.5*self.X*quad(func=lambda x: self.p0(0.5*(self.X*x + self.lb+self.ub))*legendre_family[i](x), 
-                                   a=-1, b=1)[0]
-
-        # Calculate boundary conditions: functions alpha and beta
-        boundary_conditions = (G_x(self.lb), G_x(self.ub), alpha_x(self.lb), alpha_x(self.ub))
-
-        # Calculate initial condition
-        coef = self._solve_system_coefs_spectral_modified(n_f, 0, *boundary_conditions)
-        b = b[0:n_f-1] + coef[:,0] * b[1:n_f] + coef[:,1] * b[2:]
-        M = A0 + coef[:,0]*A1 + coef[:,1]*A2 + coef 
-        np.linalg.solve()
-        
-        return A, B, C, D, rho_0, legendre_family, boundary_conditions
-
-    def _solve1d_spectral_modified(self, n_f):
-
-        raise NotImplementedError("ERROR - This function was not correctly implemented yet.")
-        
-        A, B, C, D, rho_0, legendre_family, boundary_conditions = self._pre_calculations_1d_spectral_modified(n_f)
-        h_t = self.T/N_t
-        h_x = self.X/N_x
-
-        rho_vec = np.zeros((N_t+1, n_f+1))
-        rho_vec[0,:] = rho_0
-
-        for i in tqdm(range(N_t)):
-
-            previous_matrix = (A - 0.5*h_t*(B+C+self.u(h_t*i)*D)) 
-            previous_matrix[[-2,-1], :] = 0.0
-            rho_vec[i+1,:] = previous_matrix @ rho_vec[i,:]
-            next_matrix = A + 0.5*h_t*(B+C+self.u(h_t*(i+1))*D)
-            next_matrix[-2,:] = boundary_conditions[0] + self.u((i+1)*h_t) * boundary_conditions[2]
-            next_matrix[-1,:] = boundary_conditions[1] + self.u((i+1)*h_t) * boundary_conditions[3]
-            rho_vec[i+1,:] = np.linalg.solve(next_matrix, rho_vec[i+1,:])
-        phi_matrix = np.zeros((n_f+1, N_x+1))
-        x = np.arange(-1.0, 1.0+1.8/N_x, 2/N_x)
-        for k in range(n_f+1):
-            phi_matrix[k,:] = legendre_family[k](x)
-        rho = rho_vec @ phi_matrix
-
-        return rho      
 
     def _pre_calculations_1d_forward_finite_difference(self, N_x, N_t):
         """
@@ -588,40 +500,154 @@ class ControlFPequation:
         p_infty = lambda x: c*np.exp(-self.G(x)/self.v)
         return p_infty
 
+    def _solve_system_coefs_spectral_legendre(self, n_f, Gxl, Gxu):
+
+        coef = np.zeros((n_f-1,2))
+        for k in range(n_f-1):
+            M = np.array([
+                [self.v*(k+1)*(k+2) - 2*Gxl, -self.v*(k+2)*(k+3) + 2*Gxl],
+                [self.v*(k+1)*(k+2) + 2*Gxu, self.v*(k+2)*(k+3) + 2*Gxu],
+            ])
+            m = np.array([self.v*k*(k+1) - 2*Gxl, -self.v*k*(k+1) - 2*Gxu])
+            coef[k] = np.linalg.solve(M, m)
+        return coef
+
+    def _update_with_boundary_conditions(self, i, j, M, coef):
+        aux = M[i,j] + coef[i,0]*M[i+1,j] + coef[i,1]*M[i+2,j] 
+        aux += coef[j,0]*M[i,j+1] + coef[i,0]*coef[j,0]*M[i+1,j+1] + coef[i,1]*coef[j,0]*M[i+2,j+1]
+        aux += coef[j,1]*M[i,j+2] + coef[i,0]*coef[j,1]*M[i+1,j+2] + coef[i,1]*coef[j,1]*M[i+2,j+2]
+        return aux
+
+    def _pre_calculations_1d_spectral_legendre(self, n_f):
+        """
+        Perform the matrix calculations for the 1d solving problem - Spectral Legendre-Galerkin method.
+        """
+        legendre_family = [legendre(k) for k in range(n_f+1)]
+        legendre_family_diff = [np.polyder(poly, 1) for poly in legendre_family]
+        G_x = egrad(self.G)
+        alpha_x = egrad(self.alpha)
+
+        # Calculate boundary conditions restrictions
+        coef = self._solve_system_coefs_spectral_legendre(n_f, G_x(self.lb), G_x(self.ub))
+
+        y0 = lambda x: self.p0(x) - self.p_infty(x)
+
+        # Calculate matrix preparation matrices
+        L = np.diag(2/(2*np.linspace(0,n_f,n_f+1)+1))
+        L_dot = np.zeros((n_f+1, n_f+1))
+        G_dot_L = np.zeros((n_f+1, n_f+1))
+        alpha_dot_L = np.zeros((n_f+1, n_f+1))
+        steady_L = np.zeros(n_f+1)
+        y0_L = np.zeros(n_f+1)
+        for i in range(n_f+1):
+            for j in range(n_f+1):
+                L_dot[i,j] = 0.5*min(i,j)*(min(i,j)+1)*(1+(-1)**(i+j))
+                G_dot_L[i,j] = quad(func=lambda x: G_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
+                                    a=-1, b=1)[0]
+                alpha_dot_L[i,j] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
+                                        a=-1, b=1)[0]
+            steady_L[i] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*self.p_infty(0.5*(self.X*x + self.lb+self.ub))*legendre_family_diff[i](x), 
+                               a=-1, b=1)[0]
+            y0_L[i] = quad(func=lambda x: y0(0.5*(self.X*x + self.lb+self.ub))*legendre_family[i](x), 
+                              a=-1, b=1)[0]
+        
+        # Update matrices with boundary conditions
+        Phi = np.zeros((n_f-1, n_f-1))
+        Lambda = np.zeros((n_f-1, n_f-1))
+        Theta1 = np.zeros((n_f-1, n_f-1))
+        Theta2 = np.zeros((n_f-1, n_f-1))
+        v = np.zeros(n_f-1)
+        b = np.zeros(n_f-1)
+        for i in range(n_f-1):
+            for j in range(n_f-1):
+                Phi[i,j] = self._update_with_boundary_conditions(i, j, L, coef)
+                Lambda[i,j] = self.v*self._update_with_boundary_conditions(i, j, L_dot, coef)
+                Theta1[i,j] = self._update_with_boundary_conditions(i, j, G_dot_L, coef)
+                Theta2[i,j] = self._update_with_boundary_conditions(i, j, alpha_dot_L, coef)
+            v[i] = steady_L[i] + coef[i,0]*steady_L[i+1] + coef[i,1]*steady_L[i+2]
+            b[i] = y0_L[i] + coef[i,0]*y0_L[i+1] + coef[i,1]*y0_L[i+2]
+
+        # Initial condition
+        y0 = np.linalg.solve(Phi, b)
+        
+        return Phi, Lambda, Theta1, Theta2, v, y0, legendre_family, coef
+
+    def _solve_ricatti(self, A, B, M):
+        Pi = solve_continuous_are(a=A, b=B, q=M, r=1)
+        return Pi
+
+    def _solve1d_spectral_legendre(self, n_f, N_x, N_t, controlled=True):
+        
+        Phi, Lambda, Theta1, Theta2, v, y0, legendre_family, coef = self._pre_calculations_1d_spectral_legendre(n_f)
+        A = -(Lambda + Theta1)
+        B = -v.reshape((-1,1))
+        # Supposes M is the identity transform.
+        Pi = self._solve_ricatti(A, B, Lambda)
+        Phi_inv = np.linalg.inv(Phi)
+
+        h_t = self.T/N_t
+        h_x = self.X/N_x
+
+        if controlled:
+            sol = solve_ivp(fun=lambda t,y: 4*Phi_inv@(A-B@B.T@Pi+Theta2*(B.T@Pi@y))@y/self.X**2,
+                            t_span=(0,self.T), 
+                            t_eval=np.linspace(0,self.T, N_t+1),
+                            y0=y0)
+        else:
+            sol = solve_ivp(fun=lambda t,y: 4*Phi_inv@A@y/self.X**2,
+                            t_span=(0,self.T), 
+                            t_eval=np.linspace(0,self.T, N_t+1),
+                            y0=y0)
+        y_vec = sol.y.T
+        phi_matrix = np.zeros((n_f-1, N_x+1))
+        x = np.arange(-1.0, 1.0+1.8/N_x, 2/N_x)
+        for k in range(n_f-1):
+            phi_matrix[k,:] = legendre_family[k](x) + coef[k,0]*legendre_family[k+1](x) + + coef[k,1]*legendre_family[k+2](x)
+        y = y_vec @ phi_matrix
+        return y      
+
 if __name__ == '__main__':
 
     G_func = lambda x: x*x
-    alpha_func = lambda x: x
+    alpha_func = lambda x: x**2*(1/2-x/3)
     control = lambda t: 1.0
     p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     interval = [0.0, 1.0]
-    parameters = {'v': 1.0, 'T': 5.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 1.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
-    FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
+    #FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
     #solving1 = FP_equation.solve1d(N_x=100, N_t=60000, type='forward')
     #solving2 = FP_equation.solve1d(N_x=200, N_t=3000, type='ck')
-    solving3 = FP_equation.solve1d(n_f=15, N_x=200, N_t=15000, type='spectral_galerkin')
+    #solving3 = FP_equation.solve1d(n_f=15, N_x=200, N_t=15000, type='spectral_galerkin')
     #solving4 = FP_equation.solve1d(n_f=500, N_x=500, N_t=30000, type='galerkin_fem')
     #solving5 = FP_equation.solve1d(N_x=200, N_t=15000, type='chang_cooper')
-    solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
+    #solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
     
+    FP_equation = ControlFPequation(G_func, alpha_func, control, parameters)
+    solving1 = FP_equation._solve1d_spectral_legendre(n_f=15, N_x=200, N_t=1000)
+    solving2 = FP_equation._solve1d_spectral_legendre(n_f=15, N_x=200, N_t=1000, controlled=False)
+
     x = np.linspace(0, 1, 201)
-    t = np.linspace(0, 5, 15001)
+    t = np.linspace(0, 1, 1001)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
     ax = plt.axes(projection='3d')
-    #ax.plot_surface(X, T, solving1)
-    #ax.plot_surface(X, T, solving2)
-    ax.plot_surface(X, T, solving3)
+    ax.plot_surface(X, T, solving1)
+    ax.plot_surface(X, T, solving2)
+    #ax.plot_surface(X, T, solving3)
     #ax.plot_surface(X, T, solving4)
     #ax.plot_surface(X, T, solving5)
-    ax.plot_surface(X, T, solving6)
+    #ax.plot_surface(X, T, solving6)
     ax.set_xlabel('x')
     ax.set_ylabel('t')
-    ax.set_zlabel('rho')
+    ax.set_zlabel('y')
     plt.show() 
+
+    # Plotting the integral of x-axis for each time
+    plt.plot(t, solving1.sum(axis=1) / 200 - solving2.sum(axis=1) / 200)
+    plt.show()    
 
     # Plotting the integral of x-axis for each time
     #plt.plot(t, solving1.sum(axis=1)/200, label='forward')
