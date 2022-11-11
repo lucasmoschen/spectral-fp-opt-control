@@ -280,8 +280,8 @@ Following the suggestion from $\cite[p.7]{shen2011spectral}$, we consider
 \[
 \phi_k(x) = L_k(x) + \alpha_k L_{k+1}(x) + \beta_k L_{k+2}(x),    
 \]
-where $L_k$ is the Legendre polynomial of degree $k$ and the coefficients chosen as to satisfy the boundary conditions. 
-Let us calculate this quantities:
+where $L_k$ is the Legendre polynomial of degree $k$ and the coefficients are chosen to satisfy the boundary conditions. 
+Let us calculate these quantities:
 
 \scalebox{0.85}{$
 \nu (\dot{L}_k(\pm 1) + \alpha_k \dot{L}_{k+1}(\pm 1) + \beta_k \dot{L}_{k+2}(\pm 1)) + \dot{G}(\pm 1)(L_k(\pm 1) + \alpha_k L_{k+1}(\pm 1) + \beta_k L_{k+2}(\pm 1)) = 0.
@@ -335,11 +335,11 @@ For that, we have to discretise the operators $\A, \B$ and $\mathcal{M}$:
 
 The discretised versions are 
 \[
-A_{ij} = \inner{\A \phi_j}{\phi_i} = -\inner{\nu \dot \phi_j + \dot G \phi_j}{\dot \phi_i} = -\Lambda_{ij} - \Theta^1_{ij} \implies A = -(\Lambda + \Theta^1) 
+A_{ij} = \inner{\A \phi_j}{\phi_i} = -{\left(\frac{2}{b-a}\right)}^2\inner{\nu \dot \phi_j + \dot G \phi_j}{\dot \phi_i} \implies A = -{\left(\frac{2}{b-a}\right)}^2(\Lambda + \Theta^1)
 \]
 and 
 \[
-B_{i} = \inner{\B\cdot 1}{\phi_i} = -v_i \implies B = -v.
+B_{i} = \inner{\B\cdot 1}{\phi_i} = -{\left(\frac{2}{b-a}\right)}^2\inner{\steady \dot\alpha}{\dot\phi_i} \implies B = -{\left(\frac{2}{b-a}\right)}^2 v.
 \]
 With that in mind, we have to solve the discrete Ricatti equation
 \[
@@ -349,8 +349,8 @@ with $u(t) = -B^T\Pi y(t)$.
 With this feedback, we solve
 \[
 \begin{split}
-    \Phi \dot{y} &= {\left(\frac{2}{b-a}\right)}^2(A + \Theta^2B^T\Pi y(t) )y(t) - {\left(\frac{2}{b-a}\right)}^2BB^T\Pi y(t) \\ 
-    &= {\left(\frac{2}{b-a}\right)}^2(A - BB^T\Pi  + \Theta^2B^T\Pi y(t))y(t).
+    \Phi \dot{y} &= (A + B^T\Pi y(t) \Theta^2 )y(t) - BB^T\Pi y(t) \\ 
+    &= (A - BB^T\Pi  + B^T\Pi y(t) \Theta^2)y(t).
 \end{split}
 \]
 After solving this system, we have to come back to the original coordinate system.

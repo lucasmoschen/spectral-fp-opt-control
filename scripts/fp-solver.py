@@ -579,22 +579,22 @@ class ControlFPequation:
     def _solve1d_spectral_legendre(self, n_f, N_x, N_t, controlled=True):
         
         Phi, Lambda, Theta1, Theta2, v, y0, legendre_family, coef = self._pre_calculations_1d_spectral_legendre(n_f)
-        A = -(Lambda + Theta1)
-        B = -v.reshape((-1,1))
+        Phi_inv = np.linalg.inv(Phi)
+        A = -4*(Lambda + Theta1)/self.X**2
+        B = -4*v.reshape((-1,1))/self.X**2
         # Supposes M is the identity transform.
         Pi = self._solve_ricatti(A, B, Phi)
-        Phi_inv = np.linalg.inv(Phi)
 
         h_t = self.T/N_t
         h_x = self.X/N_x
 
         if controlled:
-            sol = solve_ivp(fun=lambda t,y: 4*Phi_inv@(A-B@B.T@Pi+Theta2*(B.T@Pi@y))@y/self.X**2,
+            sol = solve_ivp(fun=lambda t,y: Phi_inv@(A-B@B.T@Pi+Theta2*(B.T@Pi@y))@y,
                             t_span=(0,self.T), 
                             t_eval=np.linspace(0,self.T, N_t+1),
                             y0=y0)
         else:
-            sol = solve_ivp(fun=lambda t,y: 4*Phi_inv@A@y/self.X**2,
+            sol = solve_ivp(fun=lambda t,y: Phi_inv@A@y,
                             t_span=(0,self.T), 
                             t_eval=np.linspace(0,self.T, N_t+1),
                             y0=y0)
@@ -614,7 +614,7 @@ if __name__ == '__main__':
     control = lambda t: 1.0
     p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     interval = [0.0, 1.0]
-    parameters = {'v': 0.5, 'T': 1.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 2.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
     #FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
@@ -647,7 +647,7 @@ if __name__ == '__main__':
     plt.show() 
 
     # Plotting the integral of x-axis for each time
-    plt.plot(t, solving1.sum(axis=1) / 200 - solving2.sum(axis=1) / 200)
+    plt.plot(t, abs(solving1.sum(axis=1)) / 200 - abs(solving2.sum(axis=1)) / 200)
     plt.show()    
 
     # Plotting the integral of x-axis for each time
