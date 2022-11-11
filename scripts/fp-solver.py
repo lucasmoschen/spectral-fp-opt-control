@@ -614,7 +614,7 @@ if __name__ == '__main__':
     control = lambda t: 1.0
     p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     interval = [0.0, 1.0]
-    parameters = {'v': 2.0, 'T': 1.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 0.1, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
     #FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
@@ -647,7 +647,7 @@ if __name__ == '__main__':
     plt.show() 
 
     # Plotting the integral of x-axis for each time
-    plt.plot(t, abs(solving1.sum(axis=1)) / 200 - abs(solving2.sum(axis=1)) / 200)
+    plt.plot(t, abs(solving1).sum(axis=1) / 200 - abs(solving2).sum(axis=1) / 200)
     plt.show()    
 
     # Plotting the integral of x-axis for each time
