@@ -5,7 +5,7 @@ import autograd.numpy as np
 from autograd import elementwise_grad as egrad, grad
 
 from scipy.integrate import quad, solve_ivp
-from scipy.stats import norm
+from scipy.stats import norm, truncnorm
 from scipy.linalg import solve_banded, solve_continuous_are
 from scipy.special import legendre
 from scipy.interpolate import lagrange
@@ -539,7 +539,7 @@ class ControlFPequation:
         alpha_dot_L = np.zeros((n_f+1, n_f+1))
         steady_L = np.zeros(n_f+1)
         y0_L = np.zeros(n_f+1)
-        for i in range(n_f+1):
+        for i in tqdm(range(n_f+1)):
             for j in range(n_f+1):
                 L_dot[i,j] = min(i,j)*(min(i,j)+1)*((i+j)%2==0)
                 G_dot_L[i,j] = quad(func=lambda x: G_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
@@ -612,51 +612,61 @@ if __name__ == '__main__':
     G_func = lambda x: x*x
     alpha_func = lambda x: x**2*(1/2-x/3)
     control = lambda t: 1.0
-    p_0 = lambda x: 140 * x**3 * (1-x)**3 #np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
+    #p_0 = lambda x: np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
+    #p_0 = lambda x: 140 * x**3 * (1-x)**3
+    #p_0 = lambda x: truncnorm(a=-0.5/1e-2, b=0.5/1e-2, loc=0.5, scale=1e-2).pdf(x)
+    def p_0(x):
+        l = 0.1
+        h = 1/l
+        return h/l * (abs(x-0.5) < l) * (l + (x-0.5)*(x<=0.5) - (x-0.5)*(x>0.5))
+
     interval = [0.0, 1.0]
     parameters = {'v': 0.1, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
     #FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
-    #solving1 = FP_equation.solve1d(N_x=100, N_t=60000, type='forward')
-    #solving2 = FP_equation.solve1d(N_x=200, N_t=3000, type='ck')
-    #solving3 = FP_equation.solve1d(n_f=15, N_x=200, N_t=15000, type='spectral_galerkin')
-    #solving4 = FP_equation.solve1d(n_f=500, N_x=500, N_t=30000, type='galerkin_fem')
-    #solving5 = FP_equation.solve1d(N_x=200, N_t=15000, type='chang_cooper')
-    #solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
+    # solving1 = FP_equation.solve1d(N_x=100, N_t=60000, type='forward')
+    # solving2 = FP_equation.solve1d(N_x=200, N_t=3000, type='ck')
+    # solving3 = FP_equation.solve1d(n_f=15, N_x=200, N_t=15000, type='spectral_galerkin')
+    # solving4 = FP_equation.solve1d(n_f=500, N_x=500, N_t=30000, type='galerkin_fem')
+    # solving5 = FP_equation.solve1d(N_x=200, N_t=15000, type='chang_cooper')
+    # solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
     
     FP_equation = ControlFPequation(G_func, alpha_func, control, parameters)
-    solving1 = FP_equation._solve1d_spectral_legendre(n_f=15, N_x=200, N_t=1000)
-    solving2 = FP_equation._solve1d_spectral_legendre(n_f=15, N_x=200, N_t=1000, controlled=False)
+    solving1 = FP_equation._solve1d_spectral_legendre(n_f=20, N_x=1000, N_t=200)
+    solving2 = FP_equation._solve1d_spectral_legendre(n_f=20, N_x=1000, N_t=200, controlled=False)
 
-    x = np.linspace(0, 1, 201)
-    t = np.linspace(0, 1, 1001)
+    x = np.linspace(0, 1, 1001)
+    t = np.linspace(0, 1, 201)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
-    ax = plt.axes(projection='3d')
-    ax.plot_surface(X, T, solving1)
-    ax.plot_surface(X, T, solving2)
-    #ax.plot_surface(X, T, solving3)
-    #ax.plot_surface(X, T, solving4)
-    #ax.plot_surface(X, T, solving5)
-    #ax.plot_surface(X, T, solving6)
-    ax.set_xlabel('x')
-    ax.set_ylabel('t')
-    ax.set_zlabel('y')
-    plt.show() 
+    # ax = plt.axes(projection='3d')
+    # ax.plot_surface(X, T, solving1)
+    # ax.plot_surface(X, T, solving2)
+    # ax.plot_surface(X, T, solving3)
+    # ax.plot_surface(X, T, solving4)
+    # ax.plot_surface(X, T, solving5)
+    # ax.plot_surface(X, T, solving6)
+    # ax.set_xlabel('x')
+    # ax.set_ylabel('t')
+    # ax.set_zlabel('y')
+    # plt.show() 
 
     # Plotting the integral of x-axis for each time
-    plt.plot(t, abs(solving1).sum(axis=1) / 200 - abs(solving2).sum(axis=1) / 200)
-    plt.show()    
+    plt.plot(t, np.mean(solving1**2, axis=1), label='controlled')
+    plt.plot(t, np.mean(solving2**2, axis=1), label='uncontrolled')
+    plt.yscale('log')
+    plt.legend()
+    plt.show()   
 
     # Plotting the integral of x-axis for each time
-    #plt.plot(t, solving1.sum(axis=1)/200, label='forward')
-    #plt.plot(t, solving2.sum(axis=1)/200, label='ck')
-    #plt.plot(t, solving3.sum(axis=1)/200, label='legendre galerkin')
-    #plt.plot(t, solving4.sum(axis=1)/500, label='galerkin')
-    #plt.plot(t, solving5.sum(axis=1)/200, label='chang')
-    #plt.plot(t, solving6.sum(axis=1)/200, label='spectral')
-    #plt.legend()
-    #plt.show() 
+    # plt.plot(t, solving1.sum(axis=1)/200, label='forward')
+    # plt.plot(t, solving2.sum(axis=1)/200, label='ck')
+    # plt.plot(t, solving3.sum(axis=1)/200, label='legendre galerkin')
+    # plt.plot(t, solving4.sum(axis=1)/500, label='galerkin')
+    # plt.plot(t, solving5.sum(axis=1)/200, label='chang')
+    # plt.plot(t, solving6.sum(axis=1)/200, label='spectral')
+    # plt.legend()
+    # plt.show() 
         
