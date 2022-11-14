@@ -542,9 +542,9 @@ class ControlFPequation:
         for i in tqdm(range(n_f+1)):
             for j in range(n_f+1):
                 L_dot[i,j] = min(i,j)*(min(i,j)+1)*((i+j)%2==0)
-                G_dot_L[i,j] = quad(func=lambda x: G_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
+                G_dot_L[i,j] = quad(func=lambda x: G_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x),
                                     a=-1, b=1)[0]
-                alpha_dot_L[i,j] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x), 
+                alpha_dot_L[i,j] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x),
                                         a=-1, b=1)[0]
             steady_L[i] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*self.p_infty(0.5*(self.X*x + self.lb+self.ub))*legendre_family_diff[i](x), 
                                a=-1, b=1)[0]
@@ -616,7 +616,7 @@ if __name__ == '__main__':
     #p_0 = lambda x: 140 * x**3 * (1-x)**3
     #p_0 = lambda x: truncnorm(a=-0.5/1e-2, b=0.5/1e-2, loc=0.5, scale=1e-2).pdf(x)
     def p_0(x):
-        l = 0.1
+        l = 0.01
         h = 1/l
         return h/l * (abs(x-0.5) < l) * (l + (x-0.5)*(x<=0.5) - (x-0.5)*(x>0.5))
 

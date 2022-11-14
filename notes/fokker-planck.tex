@@ -360,6 +360,50 @@ After solving this system, we have to come back to the original coordinate syste
     For instance, if $\mathcal{M}$ is the identity operator, we have $M = \Lambda$.
 \end{remark}
 
+\section{Finite elements}
+
+The second method we consider is the finite elements method. 
+In this case, we also consider the weak formulation and look for a basis ${\{\phi_i\}}_{i=0}^{n}$.
+In the interval $[a,b]$, set the {\em node points\/} $a = x_0 < \cdots < x_n = b$.
+The {\em elements\/} are the sub-intervals $[x_i, x_{i+1}]$ with $x_{i+1}-x_i=h$, for $i=0, \dots, n-1$.
+We set the values $\phi_k(x_i) = \delta_{ik}$ and for each element a linear function. 
+Therefore, define the function
+\[
+\phi(x) = \begin{cases}
+    x/h, &\text{if } x \in[0,h] \\
+    2 - x/h, &\text{if } x \in [h,2h] \\
+    0, &\text{otherwise}
+\end{cases} 
+\]
+and $\phi_{k}(x) = \phi(x-x_{k-1})$, for $k=0, \dots, n$ and $x \in [a,b]$, setting $x_{-1} = a-h$.
+With that in mind, it remain to calculate the same matrices as the previous method.
+Here, the rescale for $[-1,1]$ is not necessary.
+Then, if $i \ge j$,
+
+\[
+\begin{split}
+    \Phi_{ij} = \inner{\phi_i}{\phi_j} &= \int_a^b \phi(x-x_{i-1})\phi(x-x_{j-1}) \, dx \\
+    &= \int_{0}^{2h} \phi(y)\phi(y+x_{i-1}-x_{j-1}) \, dy \\
+    &= \int_{0}^{h} \frac{y}{h}\phi(y+(i-j)h) \, dy + \int_{h}^{2h} \left(2-\frac{y}{h}\right)\phi(y+(i-j)h) \, dy \\
+\end{split}
+\]
+Notice that for $i-j\ge 2$, both integrals are $0$, since $\phi(y+2h) = 0$ for $y \ge 0$.
+If $i=j+1$, the second integral is zero, while the first is 
+\[
+\int_0^h \frac{y}{h}\left(2-\frac{y+h}{h}\right) \, dy = h\int_0^1 z\left(1-z\right) \, dz = \frac{h}{6}.
+\]
+If $n > i=j > 0$, the integrals are 
+\[
+\int_{0}^{h} \frac{y^2}{h^2}\, dy = \frac{h}{3},  \quad \int_{h}^{2h} {\left(2-\frac{y}{h}\right)}^2 \, dy =  h\int_{0}^{1} z^2 \, dz = \frac{h}{3},
+\]
+which implies $\Phi_{ii} = 2h/3$ and, finally, $\Phi_{00} = \Phi_{nn} = h/3$. 
+For $i < j$, $\Phi_{ij} = \Phi_{ji}$.
+For calculating $\Lambda$, for $i \ge j$,
+
+\[
+\Lambda_{ij} = \nu \inner{\dot{\phi}_i}{\dot{\phi}_j}
+\]
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                 Bibliografia                %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
