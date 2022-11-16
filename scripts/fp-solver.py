@@ -572,6 +572,66 @@ class ControlFPequation:
         
         return Phi, Lambda, Theta1, Theta2, v, y0, legendre_family, coef
 
+    def _pre_calculations_1d_finite_elements(self, n_f):
+
+        h_f = self.X/n_f
+        alpha_x = egrad(self.alpha)
+        G_x = egrad(self.G)
+        y0 = lambda x: self.p0(x) - self.p_infty(x)
+
+        boundary = [self.v/(self.v - h_f*G_x(self.lb)), self.v/(self.v + h_f*G_x(self.ub))]
+
+        Phi = np.zeros((n_f-1, n_f+1))
+        Phi[range(n_f-1), range(1,n_f)] = 2*h_f/3
+        Phi[range(n_f-1), range(0,n_f-1)] = h_f/6
+        Phi[range(n_f-1), range(2,n_f+1)] = h_f/6
+        Phi[:,1] += Phi[:,0] * boundary[0]
+        Phi[:,-2] += Phi[:,-1] * boundary[1]
+        Phi = Phi[:,1:-1]
+
+        Lambda = np.zeros((n_f-1, n_f+1))
+        Lambda[range(n_f-1), range(1,n_f)] = 2*self.v/h_f
+        Lambda[range(n_f-1), range(2,n_f+1)] = -self.v/h_f
+        Lambda[range(n_f-1), range(n_f-1)] = -self.v/h_f
+        Lambda[:,1] += Lambda[:,0] * boundary[0]
+        Lambda[:,-2] += Lambda[:,-1] * boundary[1]
+        Lambda = Lambda[:,1:-1]
+
+        Theta1 = np.zeros((n_f+1, n_f+1))
+        G_values = self.G(np.arange(self.lb, self.ub+0.5*h_f, h_f))
+        G_integrals = np.array([quad(self.G, a=self.lb+i*h_f, b=self.lb+(i+1)*h_f)[0] for i in range(n_f)])
+        Theta1[range(n_f), range(1,n_f+1)] = (G_integrals/h_f - G_values[1:])/h_f
+        Theta1[range(1,n_f+1), range(n_f)] = (G_integrals/h_f - G_values[:-1])/h_f
+        Theta1[range(1,n_f), range(1,n_f)] = 2*G_values[1:-1]/h_f - (G_integrals[:-1] + G_integrals[1:])/h_f**2
+        Theta1[:,1] += Theta1[:,0] * boundary[0]
+        Theta1[:,-2] += Theta1[:,-1] * boundary[1]
+        Theta1 = Theta1[1:-1,1:-1]
+
+        Theta2 = np.zeros((n_f+1, n_f+1))
+        alpha_values = self.alpha(np.arange(self.lb, self.ub+0.5*h_f, h_f))
+        alpha_integrals = np.array([quad(self.alpha, a=self.lb+i*h_f, b=self.lb+(i+1)*h_f)[0] for i in range(n_f)])
+        Theta2[range(n_f), range(1,n_f+1)] = (alpha_integrals/h_f - alpha_values[1:])/h_f
+        Theta2[range(1,n_f+1), range(n_f)] = (alpha_integrals/h_f - alpha_values[:-1])/h_f
+        Theta2[range(1,n_f), range(1,n_f)] = 2*alpha_values[1:-1]/h_f - (alpha_integrals[:-1] + alpha_integrals[1:])/h_f**2
+        Theta2[:,1] += Theta2[:,0] * boundary[0]
+        Theta2[:,-2] += Theta2[:,-1] * boundary[1]
+        Theta2 = Theta2[1:-1,1:-1]
+
+        v = np.zeros(n_f+1)
+        for i in range(n_f-1):
+            v[i+1] = -v[:i+1].sum() - quad(func=lambda x: alpha_x(x)*self.p_infty(x), a=self.lb+i*h_f, b=self.lb+(i+1)*h_f)[0]
+        v[n_f] = -v[:-1].sum()
+        v = v/h_f
+        v = v[1:-1]
+
+        a = np.zeros(n_f-1)
+        for i in range(1,n_f-1):
+            a[i] = quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(x/h_f), a=0, b=h_f)[0]
+            a[i] += quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(2-x/h_f), a=h_f, b=2*h_f)[0]
+        y0 = np.linalg.solve(Phi, a)
+
+        return Phi, Lambda, Theta1, Theta2, v, y0, h_f
+
     def _solve_ricatti(self, A, B, M):
         Pi = solve_continuous_are(a=A, b=B, q=M, r=1)
         return Pi
@@ -607,18 +667,61 @@ class ControlFPequation:
 
         return y      
 
+    def _solve1d_galerkin_finite_elements(self, n_f, N_x, N_t, controlled=True):
+        
+        Phi, Lambda, Theta1, Theta2, v, y0, h_f = self._pre_calculations_1d_finite_elements(n_f)
+        Phi_inv = np.linalg.inv(Phi)
+        A = -(Lambda + Theta1)
+        B = -v.reshape((-1,1))
+        # Supposes M is the identity transform.
+        Pi = self._solve_ricatti(A, B, Phi)
+
+        h_t = self.T/N_t
+        h_x = self.X/N_x
+
+        if controlled:
+            sol = solve_ivp(fun=lambda t,y: Phi_inv@(A-B@B.T@Pi+Theta2*(B.T@Pi@y))@y,
+                            t_span=(0,self.T), 
+                            t_eval=np.linspace(0,self.T, N_t+1),
+                            y0=y0)
+        else:
+            sol = solve_ivp(fun=lambda t,y: Phi_inv@A@y,
+                            t_span=(0,self.T), 
+                            t_eval=np.linspace(0,self.T, N_t+1),
+                            y0=y0)
+        y_vec = sol.y.T
+        phi = lambda x, h: x/h * (x <= h) * (x >= 0) + (2 - x/h) * (x > h) * (x <= 2*h)
+        phi_matrix = np.zeros((n_f-1, N_x+1))
+        x = np.arange(self.lb, self.ub + 0.5*h_x, h_x)
+        for k in range(n_f-1):
+            phi_matrix[k,:] = phi(x - (self.lb + (k-1)*h_f), h_f)
+        y = y_vec @ phi_matrix
+
+        return y           
+
+    def solve1d(self, N_x=None, N_t=None, n_f=None, controlled=True, type='spectral_galerkin'):
+        """
+        Solves the Fokker-Planck equation in 1 dimension, including initial and boundary conditions.
+        """
+        if type == 'spectral_galerkin':
+            rho = self._solve1d_spectral_legendre(n_f, N_x, N_t, controlled)
+        elif type == 'galerkin_fem':
+            rho = self._solve1d_galerkin_finite_elements(n_f, N_x, N_t, controlled)
+        return rho
+
+
 if __name__ == '__main__':
 
     G_func = lambda x: x*x
     alpha_func = lambda x: x**2*(1/2-x/3)
     control = lambda t: 1.0
     #p_0 = lambda x: np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
-    #p_0 = lambda x: 140 * x**3 * (1-x)**3
+    p_0 = lambda x: 140 * x**3 * (1-x)**3
     #p_0 = lambda x: truncnorm(a=-0.5/1e-2, b=0.5/1e-2, loc=0.5, scale=1e-2).pdf(x)
-    def p_0(x):
-        l = 0.01
-        h = 1/l
-        return h/l * (abs(x-0.5) < l) * (l + (x-0.5)*(x<=0.5) - (x-0.5)*(x>0.5))
+    #def p_0(x):
+    #    l = 0.01
+    #    h = 1/l
+    #    return h/l * (abs(x-0.5) < l) * (l + (x-0.5)*(x<=0.5) - (x-0.5)*(x>0.5))
 
     interval = [0.0, 1.0]
     parameters = {'v': 0.1, 'T': 1.0, 'p_0': p_0, 'interval': interval}
@@ -633,32 +736,32 @@ if __name__ == '__main__':
     # solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
     
     FP_equation = ControlFPequation(G_func, alpha_func, control, parameters)
-    solving1 = FP_equation._solve1d_spectral_legendre(n_f=20, N_x=1000, N_t=200)
-    solving2 = FP_equation._solve1d_spectral_legendre(n_f=20, N_x=1000, N_t=200, controlled=False)
+    solving1 = FP_equation.solve1d(n_f=10, N_x=1000, N_t=200, type='spectral_galerkin')
+    solving2 = FP_equation.solve1d(n_f=100, N_x=1000, N_t=200, type='galerkin_fem')
 
     x = np.linspace(0, 1, 1001)
     t = np.linspace(0, 1, 201)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
-    # ax = plt.axes(projection='3d')
-    # ax.plot_surface(X, T, solving1)
-    # ax.plot_surface(X, T, solving2)
+    ax = plt.axes(projection='3d')
+    ax.plot_surface(X, T, solving1)
+    ax.plot_surface(X, T, solving2)
     # ax.plot_surface(X, T, solving3)
     # ax.plot_surface(X, T, solving4)
     # ax.plot_surface(X, T, solving5)
     # ax.plot_surface(X, T, solving6)
-    # ax.set_xlabel('x')
-    # ax.set_ylabel('t')
-    # ax.set_zlabel('y')
-    # plt.show() 
+    ax.set_xlabel('x')
+    ax.set_ylabel('t')
+    ax.set_zlabel('y')
+    plt.show() 
 
-    # Plotting the integral of x-axis for each time
-    plt.plot(t, np.mean(solving1**2, axis=1), label='controlled')
-    plt.plot(t, np.mean(solving2**2, axis=1), label='uncontrolled')
-    plt.yscale('log')
-    plt.legend()
-    plt.show()   
+    # Plotting the convergence speed for controlled x uncontrolled
+    #plt.plot(t, np.mean(solving1**2, axis=1), label='controlled')
+    #plt.plot(t, np.mean(solving2**2, axis=1), label='uncontrolled')
+    #plt.yscale('log')
+    #plt.legend()
+    #plt.show()   
 
     # Plotting the integral of x-axis for each time
     # plt.plot(t, solving1.sum(axis=1)/200, label='forward')

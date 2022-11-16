@@ -12,7 +12,7 @@
 
 \title{Fokker-Plank equation}
 \author{Lucas Moschen}
-\date{Abril de 2021}
+\date{\today}
 
 % mathematical definitions 
 \newcommand{\R}{\mathbb{R}}
@@ -401,8 +401,84 @@ For $i < j$, $\Phi_{ij} = \Phi_{ji}$.
 For calculating $\Lambda$, for $i \ge j$,
 
 \[
-\Lambda_{ij} = \nu \inner{\dot{\phi}_i}{\dot{\phi}_j}
+\begin{split}
+    \Lambda_{ij} = \nu \inner{\dot{\phi}_i}{\dot{\phi}_j} &= \int_a^b \dot\phi(x-x_{i-1})\dot\phi(x-x_{j-1}) \, dx \\
+    &= \int_0^{2h} \dot\phi(y)\dot\phi(y + x_{i-1}-x_{j-1}) \, dx \\
+    &= \frac{1}{h} \int_{0}^{h} \dot\phi(y+(i-j)h) \, dy - \frac{1}{h}\int_{h}^{2h} \dot\phi(y+(i-j)h) \, dy.
+\end{split}
 \]
+If $i-j \ge 2$, both integrals are $0$.
+If $i=j+1$, the second integral vanishes, while the first is 
+\[
+\int_0^h -\frac{1}{h} \, dx = -1 \implies \Lambda_{ij} = -\frac{\nu}{h}.
+\]
+If $i=j$, the first integral is $1$, while the second is $-1$, implying that $\Lambda_{ii} = 2\nu/h$.
+Finally, if $i < j$, then $\Lambda_{ij} = \Lambda_{ji}$.
+
+The other three matrices have some simplification, but need numerical integration.
+
+\[
+\begin{split}
+    \Theta^1_{i,i+1} = \inner{\dot{G} \phi_{i+1}}{\dot\phi_{i}} &= \int_h^{2h} \dot{G}(y+x_{i-1})\phi(y-h)\dot\phi(y) \, dy \\
+    &= -\frac{1}{h}\int_h^{2h} \dot{G}(y + (a+(i-1)h))\left(\frac{y-h}{h}\right) \, dy \\
+    &= -\frac{1}{h}\left[\int_h^{2h} \dot{G}(y + a+ih-h)\frac{y}{h} \, dy - G(a + ih+h) + G(a + ih)  \right] \\
+    &= -\frac{1}{h}\left[G(a + (i+1)h) - \frac{1}{h}\int_h^{2h} G(y+a+ih-h) \, dy \right] \\
+    &= -\frac{1}{h}\left[G(a + (i+1)h) - \frac{1}{h}\int_{a+ih}^{a+(i+1)h} G(y) \, dy \right], \\
+\end{split}    
+\]
+for $i=0,\dots,n-1$.
+\[
+\begin{split}
+    \Theta^1_{i,i-1} = \inner{\dot{G} \phi_{i-1}}{\dot\phi_{i}} &= \int_0^{h} \dot{G}(y+x_{i-1})\phi(y+h)\dot\phi(y) \, dy \\
+    &= \frac{1}{h}\int_0^{h} \dot{G}(y + (a+(i-1)h))\left(2-\frac{y+h}{h}\right) \, dy \\
+    &= -\frac{1}{h}\left[\int_0^{h} \dot{G}(y + a+ih-h)\frac{y}{h} \, dy - G(a + ih) + G(a + (i-1)h)  \right] \\
+    &= -\frac{1}{h}\left[G(a + (i-1)h) - \frac{1}{h}\int_0^{h} G(y+a+ih-h) \, dy \right] \\
+    &= -\frac{1}{h}\left[G(a + (i-1)h) - \frac{1}{h}\int_{a+(i-1)h}^{a+ih} G(y) \, dy \right], \\
+\end{split}    
+\]
+for $i=1,\dots,n$
+\[
+\begin{split}
+    \Theta^1_{i,i} = \inner{\dot{G} \phi_{i}}{\dot\phi_{i}} &= \int_0^{2h} \dot{G}(y+x_{i-1})\phi(y)\dot\phi(y) \, dy \\
+    &= \frac{1}{h} \left[\int_0^h \dot{G}(y+x_{i-1})\left(\frac{y}{h}\right) \, dy- \int_h^{2h} \dot{G}(y+x_{i-1})\left(2-\frac{y}{h}\right) \, dy \right] \\
+    &= \frac{1}{h} \left[\int_0^{2h} \dot{G}(y+x_{i-1})\left(\frac{y}{h}\right) \, dy - 2(G(x_{i+1}) - G(x_i)) \right] \\
+    &= \frac{1}{h} \left[2G(a+ih) - \frac{1}{h}\int_{a+(i-1)h}^{a+(i+1)h} G(y) \, dy \right], \\
+\end{split}
+\]
+for $i=1,\dots,n-1$. 
+For $i=0$, we only have the decreasing part.
+\[
+\Theta^1_{00} = -\frac{1}{h} \int_h^{2h} \dot{G}(y+(a-h))\left(2-\frac{y}{h}\right) \, dy = \frac{1}{h}\left[G(a)-\frac{1}{h}\int_a^{a+h} G(y) \, dy\right].
+\]
+On the other hand, for $i = n$, we only have the increasing part.
+\[
+\Theta^1_{nn} = \frac{1}{h} \int_0^{h} \dot{G}(y+(b-h))\left(\frac{y}{h}\right) \, dy = \frac{1}{h}\left[G(b) - \frac{1}{h}\int_{b-h}^b G(y) \, dy\right].
+\]
+On the other hand, for $i = n$, we only have the increasing part.
+If $i - j \ge 2$, we have $\Theta_{ij}^1 = 0$.
+Notice that $\Theta^2$ has similar calculations substituting $G$ by $\alpha$.
+
+Finally, we calculate the vector $v$.
+For $i=1,\dots,n-1$,
+\[
+v_i = \inner{\dot\alpha \steady}{\dot{\phi}_i} = \frac{1}{h}\left[\int_{a+(i-1)h}^{a+ih} \dot\alpha(y) \steady(y)  \, dy- \int_{a+ih}^{a+(i+1)h} \dot\alpha(y) \steady(y) \, dy \right]    
+\]
+and 
+\[
+v_0 = -\frac{1}{h} \int_a^{a+h} \dot\alpha(y) \steady(y)  \, dy, v_n = \frac{1}{h} \int_{b-h}^{b} \dot\alpha(y) \steady(y)  \, dy.
+\]
+The discrete matrices $A, B$ can be obtained from the same manner. 
+Besides that, we need to consider the boundary condition: $\nu y_x + y G_x = 0$ in the boundary points.
+Therefore, 
+\[
+\sum_{j=0}^{n} y_j(t) \left[\nu\dot\phi_j(x) + \dot{G}(x) \phi_j(x)\right] = 0, x=a,b, t \ge 0, 
+\]
+which defines to linear conditions, 
+\[
+y_0(t) \left[-\nu/h + \dot{G}(a)\right] + y_1(t) \left[\nu/h\right] = 0, y_{n-1}(t) \left[-\nu/h\right] + y_n(t) \left[\nu/h + \dot{G}(b)\right] = 0.
+\]
+So we can write $y_0(t) = \nu y_1(t)/(\nu-h\dot{G}(a))$ and $y_n(t) = \nu y_{n-1}(t) / (\nu + h\dot{G}(b))$.
+This tells us that we can decrease the system of EDOs in two variables. 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                 Bibliografia                %
