@@ -591,8 +591,8 @@ class ControlFPequation:
 
         Lambda = np.zeros((n_f-1, n_f+1))
         Lambda[range(n_f-1), range(1,n_f)] = 2*self.v/h_f
+        Lambda[range(n_f-1), range(0,n_f-1)] = -self.v/h_f
         Lambda[range(n_f-1), range(2,n_f+1)] = -self.v/h_f
-        Lambda[range(n_f-1), range(n_f-1)] = -self.v/h_f
         Lambda[:,1] += Lambda[:,0] * boundary[0]
         Lambda[:,-2] += Lambda[:,-1] * boundary[1]
         Lambda = Lambda[:,1:-1]
@@ -618,19 +618,18 @@ class ControlFPequation:
         Theta2 = Theta2[1:-1,1:-1]
 
         v = np.zeros(n_f+1)
-        for i in range(n_f-1):
-            v[i+1] = -v[:i+1].sum() - quad(func=lambda x: alpha_x(x)*self.p_infty(x), a=self.lb+i*h_f, b=self.lb+(i+1)*h_f)[0]
-        v[n_f] = -v[:-1].sum()
+        for i in range(n_f):
+            v[i] = -v[:i].sum() - quad(func=lambda x: alpha_x(x)*self.p_infty(x), a=self.lb+i*h_f, b=self.lb+(i+1)*h_f)[0]
         v = v/h_f
         v = v[1:-1]
 
         a = np.zeros(n_f-1)
-        for i in range(1,n_f-1):
-            a[i] = quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(x/h_f), a=0, b=h_f)[0]
-            a[i] += quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(2-x/h_f), a=h_f, b=2*h_f)[0]
+        for i in range(n_f-1):
+            a[i] = quad(lambda x: y0(x+self.lb+i*h_f)*(x/h_f), a=0, b=h_f)[0]
+            a[i] += quad(lambda x: y0(x+self.lb+i*h_f)*(2-x/h_f), a=h_f, b=2*h_f)[0]
         y0 = np.linalg.solve(Phi, a)
 
-        return Phi, Lambda, Theta1, Theta2, v, y0, h_f
+        return Phi, Lambda, Theta1, Theta2, v, y0, boundary, h_f
 
     def _solve_ricatti(self, A, B, M):
         Pi = solve_continuous_are(a=A, b=B, q=M, r=1)
@@ -669,7 +668,7 @@ class ControlFPequation:
 
     def _solve1d_galerkin_finite_elements(self, n_f, N_x, N_t, controlled=True):
         
-        Phi, Lambda, Theta1, Theta2, v, y0, h_f = self._pre_calculations_1d_finite_elements(n_f)
+        Phi, Lambda, Theta1, Theta2, v, y0, boundary, h_f = self._pre_calculations_1d_finite_elements(n_f)
         Phi_inv = np.linalg.inv(Phi)
         A = -(Lambda + Theta1)
         B = -v.reshape((-1,1))
@@ -690,10 +689,11 @@ class ControlFPequation:
                             t_eval=np.linspace(0,self.T, N_t+1),
                             y0=y0)
         y_vec = sol.y.T
-        phi = lambda x, h: x/h * (x <= h) * (x >= 0) + (2 - x/h) * (x > h) * (x <= 2*h)
-        phi_matrix = np.zeros((n_f-1, N_x+1))
+        y_vec = np.column_stack([boundary[0]*y_vec[:,0], y_vec, boundary[1]*y_vec[:,-1]])
+        phi = lambda x, h: x/h * (x < h) * (x >= 0) + (2 - x/h) * (x >= h) * (x <= 2*h)
+        phi_matrix = np.zeros((n_f+1, N_x+1))
         x = np.arange(self.lb, self.ub + 0.5*h_x, h_x)
-        for k in range(n_f-1):
+        for k in range(n_f+1):
             phi_matrix[k,:] = phi(x - (self.lb + (k-1)*h_f), h_f)
         y = y_vec @ phi_matrix
 
@@ -724,7 +724,7 @@ if __name__ == '__main__':
     #    return h/l * (abs(x-0.5) < l) * (l + (x-0.5)*(x<=0.5) - (x-0.5)*(x>0.5))
 
     interval = [0.0, 1.0]
-    parameters = {'v': 0.1, 'T': 1.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 0.1, 'T': 5.0, 'p_0': p_0, 'interval': interval}
 
     #FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
@@ -736,11 +736,11 @@ if __name__ == '__main__':
     # solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
     
     FP_equation = ControlFPequation(G_func, alpha_func, control, parameters)
-    solving1 = FP_equation.solve1d(n_f=10, N_x=1000, N_t=200, type='spectral_galerkin')
-    solving2 = FP_equation.solve1d(n_f=100, N_x=1000, N_t=200, type='galerkin_fem')
+    solving1 = FP_equation.solve1d(n_f=10, N_x=1000, N_t=1000, type='spectral_galerkin', controlled=False)
+    solving2 = FP_equation.solve1d(n_f=20, N_x=1000, N_t=1000, type='galerkin_fem', controlled=False)
 
     x = np.linspace(0, 1, 1001)
-    t = np.linspace(0, 1, 201)
+    t = np.linspace(0, 5, 1001)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
