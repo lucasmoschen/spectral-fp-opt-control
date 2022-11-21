@@ -41,11 +41,6 @@
 
 \onehalfspacing{}
     
-\begin{abstract}
-    This text aims to summarise the content studied during the period in the Department of Mathematics at Imperial College London with professor Dante Kalise.
-    The object of study is the Fokker-Planck equation and Optimal Control.
-\end{abstract}
-
 \tableofcontents
 
 \section*{Notation}
@@ -55,79 +50,73 @@ This list is part of the notation we use throughout the text:
 \begin{itemize}
     \item $\langle X \rangle = \mathbb{E}[X]$ is the expected value of the random variable $X$.
     \item For $f, g \in H^1(\Omega)$, we define $\langle f, g \rangle = \int_{\Omega} f(x) g(x) \, dx$
+    \item $\|f\|_{L^2}^2 = \int_{\Omega} \|f(x)\|^2 \, dx$.
 \end{itemize}
 
 \section{Introduction}
 
-Consider the Stochastic Differential Equation
-\[
-dX_t = -\nabla V(x,t) \, dt + \sqrt{2\nu} dB_t.
-\]
-The probability density function $\rho$ of the process ${\{X_t\}}_{t \in \R_+}$ is the solution of 
-\[
-\rho_t(x,t) = \nabla \cdot J(x,t), \text{ where } J(x,t) = \nu \nabla \rho(x,t) + \rho(x,t) \nabla V(x,t), (x,t) \in \Omega \times (0,+\infty), 
-\]
-subject to $J(x,t) \cdot \n = 0$ on $\partial \Omega \times (0,+\infty)$ and $\rho(x,0) = \rho_0(x)$ in $\Omega$. 
-Consider the potential 
-\[
-V(x,t) = G(x) + u(t) \alpha(x),
-\]
-such that $u$ is a control function and $\alpha$ is a control shape function that satisfies $\nabla \alpha \cdot \n = 0$ on $\partial \Omega$.
-With that, we get that the boundary condition reduces to
-\[
-0 = (\nu \nabla \rho + \rho \nabla V) \cdot \n = \nu (\nabla \rho) \cdot \n + \rho (\nabla G) \cdot \n + \cancel{u~\rho (\nabla \alpha) \cdot \n},
-\]
-witch implies that 
-\[
-(\nu \nabla \rho + \rho \nabla G) \cdot \n = 0 \text{ on } \partial \Omega.
-\]
+Consider a particle of mass $m$ immersed in a fluid.
+The fluid applies a friction force on the particle which can be described by Stokes' law.
+In this simple model, the velocity of the equation can be modelled through the following Ordinary Differential Equation (ODE)
+\begin{equation}
+    \label{eq:stokes-law}
+    m \dot{v} + \alpha v = 0 \implies v(t) = v(0) \exp\left\{-\frac{\alpha}{m} t\right\} \overset{t \to \infty}{\to} 0.    
+\end{equation}
 
-Let $\steady$ be the steady state for the uncontrolled system, i.e., the function that solves 
-\[
-\nabla \cdot (\nu \nabla \steady + \steady \nabla G) = 0 \text{ in } \Omega \times (0,\infty),
-\]
-subject to $(\nu \nabla \steady + \steady \nabla G) \cdot \n = 0$ on $\partial \Omega$.
-Define $y = \rho - \steady$.
-The problem turns to 
-\[
-\begin{split}
-    y_t &= \nabla \cdot \left[\nu \nabla (y + \steady) + (y + \steady) \nabla V\right] \\
-    &= \nabla \cdot \left(\nu \nabla y + y \nabla V + u\nabla \alpha \steady\right) + \cancel{\nabla \cdot (\nu \nabla \steady + \steady \nabla G)},
-\end{split}
-\]
-in $\Omega \times (0,\infty)$ subject to 
-\[
-0 = (\nu \nabla (y + \steady) + (y + \steady)\nabla G) \cdot \n = (\nu \nabla y + y\nabla G) \cdot \n \text{ on } \partial \Omega 
-\]
-and $y(x,0) = \rho_0(x) - \steady(x)$ in $\Omega$.
-We can write the above problem as a bilinear control system 
-\[
-\dot{y} = \mathcal{A} y + u\mathcal{N}y + \mathcal{B} u, \quad y(0) = y_0,
-\]
-where $\mathcal{B} = \mathcal{N} \steady$.
+However, for small values of $m$, thermal fluctuations may have a relevant effect on the particle's velocity.
+To handle this case, we include a fluctuation force $F_f(t)$ of random nature in equation~\eqref{eq:stokes-law}, leading to 
+\begin{equation}
+    \label{eq:fluctuation-force}
+    m\dot{v} + \alpha v = F_f(t).        
+\end{equation}
 
-The first feedback strategy is based on the cost functional 
-\[
-\mathcal{J}(y, u) = \frac{1}{2}\int_0^{\infty} \langle y, \mathcal{M} y \rangle + |u|^2 \, dt,    
-\]
-and it is obtained solving the Riccatti Equation
-\[
-\mathcal{A}^*\Pi + \Pi\mathcal{A} - \Pi\mathcal{B}\mathcal{B}^*\Pi + \mathcal{M} = 0
-\]
-and $u = -\mathcal{B}^{*}\Pi y$.
+The randomness simplifies the modelling of all particle interactions.
+The {\em Langevin force\/} is given by the fluctuating force per unit of mass $\Gamma(t) = F_f(t)/m$.
+In average, we expect that the velocity is determined by~\eqref{eq:stokes-law}. 
+By this reason, we consider $\langle \Gamma(t) \rangle = 0$.
+Moreover, $\langle \Gamma(t) \Gamma(t') \rangle = 0$ for $|t-t'| \ge \tau_0$, where $\tau_0$ is the duration time of a collision.
 
-The second strategy is based on the solution $\Gamma$ to a Lyapunov equation
+The Stochastic Differential Equation (SDE) in~\eqref{eq:fluctuation-force} induces a distribution on the velocity, since it is a random variable.
+The probability density function (pdf) of the velocity for this model is given by a simple Fokker-Planck equation 
 \[
-\mathcal{A}^* \Upsilon + \Upsilon \mathcal{A} + 2 \mu I = 0,   
+\frac{\partial W}{\partial t} = \frac{\alpha}{m} \frac{\partial (v W)}{\partial v} + \frac{\alpha}{m} \frac{kT}{m} \frac{\partial^2 W}{\partial v^2},
 \]
-for a properly chosen parameter $\mu > 0$.
+where $W(v,t)$ is the pdf of $v$ at time $t$.
 
-Some additional references:
-
-\begin{itemize}
-    \item~\cite{bris2008existence}: covers the existence and the uniqueness of a class of Fokker-Planck equations with coefficients in Sobolov spaces $W^{1,p}$.
-    \item~\cite{huang2015steady}: existence of steady state of Fokker-Planck equation in $\Omega \subseteq \R^n$.
-\end{itemize}
+The general form of Fokker-Planck equation in one dimension is given by 
+\begin{equation}
+    \label{eq:fokker-planck-1d}
+    \frac{\partial W}{\partial t} = \left[-\sum_{i=1}^N \frac{\partial}{\partial x_i} D_i^{(1)}(x) + \sum_{i,j=1}^N \frac{\partial^2}{\partial x_i \partial x_j} D_{ij}^{(2)}(x)\right]W,
+\end{equation}
+where $D^{(1)}$ is the drift coefficient and $D^{(2)}$ is the diffusion coefficient.
+Consider the SDE
+\[
+dX_t = -\nabla G(x) \, dt + \sqrt{2\nu} dB_t.
+\]
+The pdf $\rho$ of the process ${\{X_t\}}_{t \in \R_+}$ defined for $(x,t) \in \Omega \times (0,+\infty)$ is the solution to 
+\[
+\rho_t(x,t) = \nabla \cdot J(x,t),
+\]
+where $J(x,t) = \nu \nabla \rho(x,t) + \rho(x,t) \nabla G(x)$ is the probability current. 
+This Partial Differential Equation (PDE) is subject to the boundary condition $J(x,t) \cdot \n = 0$ on $\partial \Omega \times (0,+\infty)$, which guarantees that for all $t \ge 0$,
+\[
+\int_{\Omega} \rho(x,t) \, dx = \int_{\Omega} \rho_0(x) \, dx,
+\]
+where $\rho_0(x) = \rho(x,0)$.
+The steady state of this equation is the solution to
+\[
+\nabla \cdot J(x,t) = 0 \text{ in } \Omega \times \R_+,
+\]
+subject to $J(x,t) = 0 $ on $\partial \Omega \times \R_+$, when it does not depend on time.
+Let $\rho(x,t) = c e^{-G(x)/\nu}$, where $c$ is a normalising constant given by the initial condition.
+Therefore, 
+\[
+J(x,t) = \nu \left(-\frac{\nabla G(x)}{\nu} \rho(x,t)\right) + \rho(x,t) \nabla G(x) = 0,
+\]
+independent of $t$, which implies that the steady state $\steady$ is 
+\[
+\steady(x) \propto e^{-G(x)/\nu}.
+\]
 
 \section{Well-posedness}
 
@@ -147,6 +136,69 @@ Moreover the solution satisfies
     \item For every $t \in [0,T]$, we have that $\inner{\rho(t) - \rho_0}{1_{\Omega}} = 0$.
     \item If $\rho_0 \ge 0$ almost everywhere on $\Omega$, then $\rho(x,t) \ge 0$ for all $t > 0$ and almost all $x \in \Omega$.
 \end{enumerate}
+
+Some additional references:
+
+\begin{itemize}
+    \item~\cite{bris2008existence}: covers the existence and the uniqueness of a class of Fokker-Planck equations with coefficients in Sobolov spaces $W^{1,p}$.
+    \item~\cite{huang2015steady}: existence of steady state of Fokker-Planck equation in $\Omega \subseteq \R^n$.
+\end{itemize}
+
+\section{Optimal control problem}
+
+To accelerate the convergence to the steady state as $t \to \infty$, we include a control function $u : \R_{+} \to \R$ which acts in the space according to the control shape function $\alpha : \Omega \to \R$, which satisfies $\nabla \alpha \cdot \n = 0$ on $\partial \Omega$.
+Therefore, we substitute the potential $G$ to
+\[
+V(x,t) = G(x) + u(t) \alpha(x),
+\]
+Notice that with the format of $\alpha$, the boundary condition is unchangeable
+\[
+0 = (\nu \nabla \rho + \rho \nabla V) \cdot \n = (\nu \nabla \rho + \rho \nabla G) \cdot \n + \cancel{u~\rho (\nabla \alpha) \cdot \n}.
+\]
+
+Define $y = \rho - \steady$. 
+We want that $\|y\|_{L^2}$ converges to $0$ the faster as possible. 
+With the change of variables, the problem turns to
+\[
+\begin{split}
+    y_t &= \nabla \cdot \left[\nu \nabla (y + \steady) + (y + \steady) \nabla V\right] \\
+    &= \nabla \cdot \left(\nu \nabla y + y \nabla V + u\nabla \alpha \steady\right) + \cancel{\nabla \cdot (\nu \nabla \steady + \steady \nabla G)} \\
+    &= \nabla \cdot (\nu \nabla y + y \nabla G) + u \nabla \cdot (y \nabla \alpha) + u \nabla \cdot (\steady \nabla \alpha),
+\end{split}
+\]
+in $\Omega \times \R_+$ subject to 
+\[
+0 = (\nu \nabla (y + \steady) + (y + \steady)\nabla G) \cdot \n = (\nu \nabla y + y\nabla G) \cdot \n \text{ on } \partial \Omega \times \R_+
+\]
+and $y(x,0) = \rho_0(x) - \steady(x)$ in $\Omega$.
+We can write the above problem as a bilinear abstract control system 
+\[
+\dot{y} = \mathcal{A} y + u\mathcal{N}y + \mathcal{B} u, \quad y(0) = y_0,
+\]
+where $\mathcal{B} = \mathcal{N} \steady$.
+
+We look at the functional cost
+\[
+\mathcal{J}(y, u) = \frac{1}{2}\int_0^{\infty} \langle y, \mathcal{M} y \rangle + |u|^2 \, dt.
+\]
+Disregarding the bilinear expression $\N$, we get to the linear optimal control problem
+\begin{align*}
+    \min~ &J(y,u) \\
+    \text{s.t. } &\dot{y} = \A y + \B u, \\
+    &y(0) = y_0,
+\end{align*}
+where $\A$ incorporates the boundary condition $\nabla \cdot (\nu \nabla y + y \nabla G) = 0$.
+The optimal control to that problem is obtained through solving the Ricatti equation
+\[
+\mathcal{A}^*\Pi + \Pi\mathcal{A} - \Pi\mathcal{B}\mathcal{B}^*\Pi + \mathcal{M} = 0
+\]
+with the feedback control $u = -\mathcal{B}^{*}\Pi y$.
+
+The second strategy is based on the solution $\Gamma$ to a Lyapunov equation
+\[
+\mathcal{A}^* \Upsilon + \Upsilon \mathcal{A} + 2 \mu I = 0,   
+\]
+for a properly chosen parameter $\mu > 0$.
 
 \section{Operator form}
 
@@ -360,7 +412,7 @@ After solving this system, we have to come back to the original coordinate syste
     For instance, if $\mathcal{M}$ is the identity operator, we have $M = \Lambda$.
 \end{remark}
 
-\section{Finite elements}
+\subsection{Finite elements}
 
 The second method we consider is the finite elements method. 
 In this case, we also consider the weak formulation and look for a basis ${\{\phi_i\}}_{i=0}^{n}$.
