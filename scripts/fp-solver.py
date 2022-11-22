@@ -569,6 +569,9 @@ class ControlFPequation:
 
         # Initial condition
         y0 = np.linalg.solve(Phi, b)
+
+        # Updating Theta2
+        Theta2 = 4 * Theta2 / self.X**2
         
         return Phi, Lambda, Theta1, Theta2, v, y0, legendre_family, coef
 
@@ -652,11 +655,13 @@ class ControlFPequation:
                             t_span=(0,self.T), 
                             t_eval=np.linspace(0,self.T, N_t+1),
                             y0=y0)
+            control = -B.T@Pi@sol.y
         else:
             sol = solve_ivp(fun=lambda t,y: Phi_inv@A@y,
                             t_span=(0,self.T), 
                             t_eval=np.linspace(0,self.T, N_t+1),
                             y0=y0)
+            control = np.zeros(N_t+1)
         y_vec = sol.y.T
         phi_matrix = np.zeros((n_f-1, N_x+1))
         x = np.arange(-1.0, 1.0+1.8/N_x, 2/N_x)
@@ -664,7 +669,7 @@ class ControlFPequation:
             phi_matrix[k,:] = legendre_family[k](x) + coef[k,0]*legendre_family[k+1](x) + + coef[k,1]*legendre_family[k+2](x)
         y = y_vec @ phi_matrix
 
-        return y      
+        return y, control[0]
 
     def _solve1d_galerkin_finite_elements(self, n_f, N_x, N_t, controlled=True):
         
@@ -683,11 +688,13 @@ class ControlFPequation:
                             t_span=(0,self.T), 
                             t_eval=np.linspace(0,self.T, N_t+1),
                             y0=y0)
+            control = -B.T@Pi@sol.y
         else:
             sol = solve_ivp(fun=lambda t,y: Phi_inv@A@y,
                             t_span=(0,self.T), 
                             t_eval=np.linspace(0,self.T, N_t+1),
                             y0=y0)
+            control = np.zeros(N_t+1)
         y_vec = sol.y.T
         y_vec = np.column_stack([boundary[0]*y_vec[:,0], y_vec, boundary[1]*y_vec[:,-1]])
         phi = lambda x, h: x/h * (x < h) * (x >= 0) + (2 - x/h) * (x >= h) * (x <= 2*h)
@@ -697,18 +704,17 @@ class ControlFPequation:
             phi_matrix[k,:] = phi(x - (self.lb + (k-1)*h_f), h_f)
         y = y_vec @ phi_matrix
 
-        return y           
+        return y, control[0]
 
     def solve1d(self, N_x=None, N_t=None, n_f=None, controlled=True, type='spectral_galerkin'):
         """
         Solves the Fokker-Planck equation in 1 dimension, including initial and boundary conditions.
         """
         if type == 'spectral_galerkin':
-            rho = self._solve1d_spectral_legendre(n_f, N_x, N_t, controlled)
+            y, control = self._solve1d_spectral_legendre(n_f, N_x, N_t, controlled)
         elif type == 'galerkin_fem':
-            rho = self._solve1d_galerkin_finite_elements(n_f, N_x, N_t, controlled)
-        return rho
-
+            y, control = self._solve1d_galerkin_finite_elements(n_f, N_x, N_t, controlled)
+        return y, control
 
 if __name__ == '__main__':
 
@@ -724,7 +730,7 @@ if __name__ == '__main__':
     #    return h/l * (abs(x-0.5) < l) * (l + (x-0.5)*(x<=0.5) - (x-0.5)*(x>0.5))
 
     interval = [0.0, 1.0]
-    parameters = {'v': 0.1, 'T': 5.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 0.1, 'T': 1.0, 'p_0': p_0, 'interval': interval}
 
     #FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
@@ -736,16 +742,17 @@ if __name__ == '__main__':
     # solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
     
     FP_equation = ControlFPequation(G_func, alpha_func, control, parameters)
-    solving1 = FP_equation.solve1d(n_f=10, N_x=1000, N_t=1000, type='spectral_galerkin', controlled=False)
-    solving2 = FP_equation.solve1d(n_f=20, N_x=1000, N_t=1000, type='galerkin_fem', controlled=False)
+    #solving1 = FP_equation.solve1d(n_f=10, N_x=1000, N_t=1000, type='spectral_galerkin', controlled=False)
+    solving2, control = FP_equation.solve1d(n_f=10, N_x=200, N_t=200, type='spectral_galerkin', controlled=True)
+    #solving2 = FP_equation.solve1d(n_f=20, N_x=1000, N_t=1000, type='galerkin_fem', controlled=False)
 
-    x = np.linspace(0, 1, 1001)
-    t = np.linspace(0, 5, 1001)
+    x = np.linspace(0, 1, 201)
+    t = np.linspace(0, 1, 201)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
     ax = plt.axes(projection='3d')
-    ax.plot_surface(X, T, solving1)
+    #ax.plot_surface(X, T, solving1)
     ax.plot_surface(X, T, solving2)
     # ax.plot_surface(X, T, solving3)
     # ax.plot_surface(X, T, solving4)
@@ -758,10 +765,10 @@ if __name__ == '__main__':
 
     # Plotting the convergence speed for controlled x uncontrolled
     #plt.plot(t, np.mean(solving1**2, axis=1), label='controlled')
-    #plt.plot(t, np.mean(solving2**2, axis=1), label='uncontrolled')
+    plt.plot(t, np.mean(solving2**2, axis=1) + control**2, label='uncontrolled')
     #plt.yscale('log')
     #plt.legend()
-    #plt.show()   
+    plt.show()   
 
     # Plotting the integral of x-axis for each time
     # plt.plot(t, solving1.sum(axis=1)/200, label='forward')

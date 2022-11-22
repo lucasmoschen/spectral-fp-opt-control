@@ -55,7 +55,7 @@ This list is part of the notation we use throughout the text:
 
 \section{Introduction}
 
-Consider a particle of mass $m$ immersed in a fluid.
+Consider a particle of mass $m$ immersed in a fluid~\cite{risken1996fokker}.
 The fluid applies a friction force on the particle which can be described by Stokes' law.
 In this simple model, the velocity of the equation can be modelled through the following Ordinary Differential Equation (ODE)
 \begin{equation}
@@ -64,7 +64,7 @@ In this simple model, the velocity of the equation can be modelled through the f
 \end{equation}
 
 However, for small values of $m$, thermal fluctuations may have a relevant effect on the particle's velocity.
-To handle this case, we include a fluctuation force $F_f(t)$ of random nature in equation~\eqref{eq:stokes-law}, leading to 
+To simulate this effect, we include a random fluctuation force $F_f(t)$ in equation~\eqref{eq:stokes-law}, leading to 
 \begin{equation}
     \label{eq:fluctuation-force}
     m\dot{v} + \alpha v = F_f(t).        
@@ -74,35 +74,47 @@ The randomness simplifies the modelling of all particle interactions.
 The {\em Langevin force\/} is given by the fluctuating force per unit of mass $\Gamma(t) = F_f(t)/m$.
 In average, we expect that the velocity is determined by~\eqref{eq:stokes-law}. 
 By this reason, we consider $\langle \Gamma(t) \rangle = 0$.
-Moreover, $\langle \Gamma(t) \Gamma(t') \rangle = 0$ for $|t-t'| \ge \tau_0$, where $\tau_0$ is the duration time of a collision.
+Moreover, $\langle \Gamma(t) \Gamma(t') \rangle = q\delta(t - t')$. 
 
 The Stochastic Differential Equation (SDE) in~\eqref{eq:fluctuation-force} induces a distribution on the velocity, since it is a random variable.
-The probability density function (pdf) of the velocity for this model is given by a simple Fokker-Planck equation 
+The corresponding probability density function (PDF) $W$ is given by a Partial Differential Equation (PDF), called {\em Fokker-Planck\/} equation.
+Its simple form is given by
 \[
 \frac{\partial W}{\partial t} = \frac{\alpha}{m} \frac{\partial (v W)}{\partial v} + \frac{\alpha}{m} \frac{kT}{m} \frac{\partial^2 W}{\partial v^2},
 \]
-where $W(v,t)$ is the pdf of $v$ at time $t$.
+where $W(v,t)$ is the PDF of $v$ at time $t$.
 
 The general form of Fokker-Planck equation in one dimension is given by 
 \begin{equation}
     \label{eq:fokker-planck-1d}
-    \frac{\partial W}{\partial t} = \left[-\sum_{i=1}^N \frac{\partial}{\partial x_i} D_i^{(1)}(x) + \sum_{i,j=1}^N \frac{\partial^2}{\partial x_i \partial x_j} D_{ij}^{(2)}(x)\right]W,
+    \frac{\partial W}{\partial t}(x,t) = \left[-\sum_{i=1}^N \frac{\partial}{\partial x_i} D_i^{(1)}(x) + \sum_{i,j=1}^N \frac{\partial^2}{\partial x_i \partial x_j} D_{ij}^{(2)}(x)\right]W(x,t),
 \end{equation}
 where $D^{(1)}$ is the drift coefficient and $D^{(2)}$ is the diffusion coefficient.
 Consider the SDE
 \[
 dX_t = -\nabla G(x) \, dt + \sqrt{2\nu} dB_t.
 \]
-The pdf $\rho$ of the process ${\{X_t\}}_{t \in \R_+}$ defined for $(x,t) \in \Omega \times (0,+\infty)$ is the solution to 
+
+The PDF $\rho$ of the process ${\{X_t\}}_{t \in \R_+}$ defined for $(x,t) \in \Omega \times \R_+$ is the solution to 
 \[
 \rho_t(x,t) = \nabla \cdot J(x,t),
 \]
-where $J(x,t) = \nu \nabla \rho(x,t) + \rho(x,t) \nabla G(x)$ is the probability current. 
-This Partial Differential Equation (PDE) is subject to the boundary condition $J(x,t) \cdot \n = 0$ on $\partial \Omega \times (0,+\infty)$, which guarantees that for all $t \ge 0$,
+where
+\[
+J(x,t) = \nu \nabla \rho(x,t) + \rho(x,t) \nabla G(x)
+\]
+is the probability current. 
+To guarantee that for all $t \ge 0$, 
 \[
 \int_{\Omega} \rho(x,t) \, dx = \int_{\Omega} \rho_0(x) \, dx,
 \]
-where $\rho_0(x) = \rho(x,0)$.
+where $\rho_0(x) = \rho(x,0)$, the probability current is subject to the boundary condition
+\[
+J(x,t) \cdot \n = 0 \text{ on } \partial \Omega \times \R_+.
+\]
+This corresponds to a particle being reflected after hitting the boundary of $\Omega$.
+
+
 The steady state of this equation is the solution to
 \[
 \nabla \cdot J(x,t) = 0 \text{ in } \Omega \times \R_+,
@@ -146,7 +158,7 @@ Some additional references:
 
 \section{Optimal control problem}
 
-To accelerate the convergence to the steady state as $t \to \infty$, we include a control function $u : \R_{+} \to \R$ which acts in the space according to the control shape function $\alpha : \Omega \to \R$, which satisfies $\nabla \alpha \cdot \n = 0$ on $\partial \Omega$.
+To accelerate the convergence to the steady state as $t \to \infty$~\cite{breiten2018control}, we include a control function $u : \R_{+} \to \R$ which acts in the space according to the control shape function $\alpha : \Omega \to \R$, which satisfies $\nabla \alpha \cdot \n = 0$ on $\partial \Omega$.
 Therefore, we substitute the potential $G$ to
 \[
 V(x,t) = G(x) + u(t) \alpha(x),
@@ -175,44 +187,16 @@ We can write the above problem as a bilinear abstract control system
 \[
 \dot{y} = \mathcal{A} y + u\mathcal{N}y + \mathcal{B} u, \quad y(0) = y_0,
 \]
-where $\mathcal{B} = \mathcal{N} \steady$.
-
-We look at the functional cost
-\[
-\mathcal{J}(y, u) = \frac{1}{2}\int_0^{\infty} \langle y, \mathcal{M} y \rangle + |u|^2 \, dt.
-\]
-Disregarding the bilinear expression $\N$, we get to the linear optimal control problem
-\begin{align*}
-    \min~ &J(y,u) \\
-    \text{s.t. } &\dot{y} = \A y + \B u, \\
-    &y(0) = y_0,
-\end{align*}
-where $\A$ incorporates the boundary condition $\nabla \cdot (\nu \nabla y + y \nabla G) = 0$.
-The optimal control to that problem is obtained through solving the Ricatti equation
-\[
-\mathcal{A}^*\Pi + \Pi\mathcal{A} - \Pi\mathcal{B}\mathcal{B}^*\Pi + \mathcal{M} = 0
-\]
-with the feedback control $u = -\mathcal{B}^{*}\Pi y$.
-
-The second strategy is based on the solution $\Gamma$ to a Lyapunov equation
-\[
-\mathcal{A}^* \Upsilon + \Upsilon \mathcal{A} + 2 \mu I = 0,   
-\]
-for a properly chosen parameter $\mu > 0$.
-
-\section{Operator form}
-
-Define the operators 
+where we define the operators 
 \[
 \begin{split}
-    \mathcal{A} &: \mathcal{D}(\mathcal{A}) \to L^2(\Omega), \\
-    &\mathcal{D}(\mathcal{A}) = \{\rho \in H^2(\Omega) : (\nu \nabla \rho + \rho \nabla G) \cdot \n = 0 \text{ on } \partial \Omega\} \\
-    &\mathcal{A} \rho = \nu \Delta \rho + \nabla \cdot (\rho \nabla G),   
+    \mathcal{A} : \mathcal{D}(&\mathcal{A}) \to L^2(\Omega), \quad \mathcal{D}(\mathcal{A}) = \{\phi \in H^2(\Omega) : (\nu \nabla \phi + \phi \nabla G) \cdot \n = 0 \text{ on } \partial \Omega\} \\
+    &\mathcal{A} \phi = \nu \Delta \phi + \nabla \cdot (\phi \nabla G),   
 \end{split}
 \]
 and
 \[
-\mathcal{N} : H^1(\Omega) \to L^2(\Omega), \mathcal{N}\rho = \nabla \cdot (\rho \nabla \alpha).    
+\mathcal{N} : H^1(\Omega) \to L^2(\Omega), \quad \mathcal{N}\rho = \nabla \cdot (\rho \nabla \alpha).    
 \]
 The adjoint operators are well-defined and given by 
 \[
@@ -223,86 +207,62 @@ and
 \mathcal{N}^* \varphi = - \nabla \varphi \cdot  \nabla \alpha. 
 \]
 
-Considering the uncontrolled system $\dot{\rho} = \mathcal{A} \rho$, introduce the function $\Phi(x) = \log \nu + \frac{G(x)}{\nu}$.
-Further, define the operator $\mathcal{A}_s = e^{\Phi/2}\mathcal{A}e^{-\Phi/2}$.
-Then,
+We look at the functional cost
 \[
-\mathcal{A}\left(e^{-\Phi/2} \rho \right) = \nu e^{-\Phi/2}\left(\Delta \rho + \frac{1}{2}\rho\Delta \Phi - \frac{1}{4}\rho \nabla \Phi \cdot \nabla \Phi \right).
+\mathcal{J}(y, u) = \frac{1}{2}\int_0^{\infty} \langle y, \mathcal{M} y \rangle + |u|^2 \, dt.
 \]
-The following results can be obtained:
-\begin{itemize}
-    \item $\mathcal{A}_s$ is self-adjoint.
-    \item The spectrum $\sigma(\mathcal{A}_s)$ consists of non-positive pure points with $0 \in \sigma(\mathcal{A}_s)$.
-    \item The eigenfunctions ${\{\psi_i\}}_{i=0}^{\infty}$ form a complete orthogonal set.
-    \item $\sigma(\mathcal{A}_s) = \sigma(\mathcal{A})$ and $\psi_i$ is eigenfunction of $\mathcal{A}$ iff $e^{\Psi/2}\psi_i$ is eigenfunction of $\mathcal{A}_s$. 
-    \item $\psi_i$ is eigenfunction of $\mathcal{A}$ iff $e^{\Psi}\psi_i$ is eigenfunction of $\mathcal{A}^*$. 
-    \item $\steady = ce^{-\Phi}$ is eigenfunction of $\mathcal{A}$ associated with the eigenvalue $0$.
-\end{itemize}
-
-\subsection{Decoupling the Fokker-Planck equation}
-
-Consider the projection transform $\mathcal{P}$ onto $1^{\perp}$ along $\steady$, written as 
-\[
-\mathcal{P}y = y - \int_{\Omega} y \, dx \steady,    
-\]
-and its complementary $\mathcal{Q}y = (I-\mathcal{P})y$.
-If $y \in \mathcal{Y}$, we can decompose $\mathcal{Y} = im(\mathcal{P}) \oplus im(\mathcal{Q})$, which implies $y = \mathcal{P}y + \mathcal{Q}y = y_{\mathcal{P}} + y_{\mathcal{Q}}$.
-Therefore, Fokker-Planck equation turns to
-\[
-\dot{y}_{\P} + \dot{y}_{\Q} = \mathcal{A}(y_{\P} + y_{\Q}) + u\N(y_{\P} + y_{\Q}) + \B u.
-\]
-Applying $\P$ and $\Q$ to this equation and noticing that $\P(\P y) = \P y, \Q(\Q y) = \Q y, \P(\Q y) = \Q(\P y) = 0$, we get the system
-\[
-\begin{bmatrix}
-    \dot{y}_{\P} \\ \dot{y}_{\Q} 
-\end{bmatrix} = \begin{bmatrix}
-    \P\A & 0 \\ 0 & 0 
-\end{bmatrix}\begin{bmatrix}
-    y_{\P} \\ y_{\Q} 
-\end{bmatrix} + u\begin{bmatrix}
-    \P\N & \P\N \\ 0 & 0 
-\end{bmatrix}\begin{bmatrix}
-    y_{\P} \\ y_{\Q} 
-\end{bmatrix} + u\begin{bmatrix}
-    \P\B \\ 0
-\end{bmatrix},
-\]
-where other identities were also used.
+Disregarding the bilinear expression $\N$, we get to the linear optimal control problem
+\begin{align}
+    \label{eq:optimal-control-problem}
+    \min~ &J(y,u) \\
+    \text{s.t. } &\dot{y} = \A y + \B u, \\
+    &y(0) = y_0,
+\end{align}
+where $\A$ incorporates the boundary condition $\nabla \cdot (\nu \nabla y + y \nabla G) = 0$.
 
 \section{Ricatti-based feedback control}
 
-It is considered the linearised version of the system, that is, $uNy$ term is dropped.
-In this section, they derive the Ricatti equation.
+The Ricatti equation associated to the optimal control problem in~\eqref{eq:optimal-control-problem}, that is, the linearised version of the system with the term $uNy$ dropped is
+\[
+\mathcal{A}^*\Pi + \Pi\mathcal{A} - \Pi\mathcal{B}\mathcal{B}^*\Pi + \mathcal{M} = 0.
+\]
+The feedback optimal control is given by $u = -\mathcal{B}^{*}\Pi y$.
 
-\section{Methods for solving a PDE}
+Another strategy is based on the solution $\Gamma$ to a Lyapunov equation
+\[
+\mathcal{A}^* \Upsilon + \Upsilon \mathcal{A} + 2 \mu I = 0,   
+\]
+for a properly chosen parameter $\mu > 0$.
 
-\begin{enumerate}[(a)]
-    \item Finite differences:~\cite{chang1970practical} build a scheme where positivity and conservation of mass are maintained.
-    \item Finite elements
-    \item Collocation methods, which is a spectral method in the strong sense
-    \item Spectral-Legendre method
-\end{enumerate}
+\section{Methods for solving Fokker-Planck equation}
 
-The equation we are trying to solve is 
+The equation we want to solve is 
 \[
 y_t = \nabla \cdot (\nu \nabla y + y \nabla G + u y \nabla \alpha + u \steady \nabla \alpha),
 \]
-subject to $(\nu \nabla y + y \nabla G) \cdot \n = 0$ in the boundary and $y = \rho_0 - \steady$ as initial condition.
+subject to $(\nu \nabla y + y \nabla G) \cdot \n = 0$ on the boundary and $y = \rho_0 - \steady$ as initial condition.
 In the weak formulation, for every $\phi \in H^1(\Omega)$, we have
 \[
 \inner{y_t}{\phi} = -\inner{\nu \nabla y + y \nabla G}{\nabla \phi} - u(t)\inner{\nabla \alpha y}{\nabla \phi} - u(t)\inner{ \nabla \alpha \steady}{\nabla \phi}.
 \]
 
+\begin{enumerate}[(a)]
+    \item Spectral-Legendre method
+    \item Finite elements
+    \item Finite differences:~\cite{chang1970practical} build a scheme where positivity and conservation of mass are maintained.
+    \item Collocation methods, which is a spectral method in the strong sense
+\end{enumerate}
+
 \subsection{Spectral-Legendre method}
 
-Let us consider the one-dimensional case for now: $\Omega = [a,b]$.
+Let us consider the one-dimensional case $\Omega = [a,b]$.
 To simplify future calculations, we consider the variable
 \[
 \tilde{y}(x,t) = y\left(\left(\frac{b-a}{2}\right)x + \left(\frac{a+b}{2}\right), t\right), \forall x \in [-1,1], t > 0.    
 \]
 We do the same for $G$, $\alpha$ and $\steady$. 
-For sake of conciseness, we drop $\sim$ for now.
-The formulation turns to 
+For sake of conciseness, we drop the $\sim$ for now.
+The weak formulation turns to 
 \[
 \inner{y_t}{\phi} = - {\left(\frac{2}{b-a}\right)}^2\inner{\nu y_x + y \dot{G} + u y \dot{\alpha} + u\steady \dot{\alpha}}{\dot{\phi}}.
 \]
@@ -324,7 +284,7 @@ Considering the set of test equal to the trial functions, we get in the followin
     &+ u(t) \inner{\dot{\alpha} \steady}{\dot{\phi}_i},
 \end{split}
 \]
-which can be rewritten as a system of ODEs:
+which can be rewritten as a system of ODEs
 \[
 \Phi \dot{y}(t) = -{\left(\frac{2}{b-a}\right)}^2 (\Lambda + \Theta^1 + u(t)\Theta^2)y(t) - {\left(\frac{2}{b-a}\right)}^2u(t)v.    
 \]
@@ -333,11 +293,13 @@ Following the suggestion from $\cite[p.7]{shen2011spectral}$, we consider
 \phi_k(x) = L_k(x) + \alpha_k L_{k+1}(x) + \beta_k L_{k+2}(x),    
 \]
 where $L_k$ is the Legendre polynomial of degree $k$ and the coefficients are chosen to satisfy the boundary conditions. 
-Let us calculate these quantities:
-
-\scalebox{0.85}{$
-\nu (\dot{L}_k(\pm 1) + \alpha_k \dot{L}_{k+1}(\pm 1) + \beta_k \dot{L}_{k+2}(\pm 1)) + \dot{G}(\pm 1)(L_k(\pm 1) + \alpha_k L_{k+1}(\pm 1) + \beta_k L_{k+2}(\pm 1)) = 0.
-$}
+Therefore, we want that
+\[
+\begin{split}
+    &\nu (\dot{L}_k(\pm 1) + \alpha_k \dot{L}_{k+1}(\pm 1) + \beta_k \dot{L}_{k+2}(\pm 1)) \\ 
+    &+ \dot{G}(\pm 1)(L_k(\pm 1) + \alpha_k L_{k+1}(\pm 1) + \beta_k L_{k+2}(\pm 1)) = 0.
+\end{split}
+\]
 
 which can be written in matrix formulation
 \[
