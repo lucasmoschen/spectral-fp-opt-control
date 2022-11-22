@@ -584,55 +584,86 @@ class ControlFPequation:
 
         boundary = [self.v/(self.v - h_f*G_x(self.lb)), self.v/(self.v + h_f*G_x(self.ub))]
 
-        Phi = np.zeros((n_f-1, n_f+1))
-        Phi[range(n_f-1), range(1,n_f)] = 2*h_f/3
-        Phi[range(n_f-1), range(0,n_f-1)] = h_f/6
-        Phi[range(n_f-1), range(2,n_f+1)] = h_f/6
-        Phi[:,1] += Phi[:,0] * boundary[0]
-        Phi[:,-2] += Phi[:,-1] * boundary[1]
-        Phi = Phi[:,1:-1]
+        Phi = np.zeros((n_f+1, n_f+1))
+        Phi[range(1,n_f), range(1,n_f)] = 2*h_f/3
+        Phi[[0,-1],[0,-1]] = [h_f/3, h_f/3]
+        Phi[range(0,n_f), range(1,n_f+1)] = h_f/6
+        Phi[range(1,n_f+1), range(0,n_f)] = h_f/6
 
-        Lambda = np.zeros((n_f-1, n_f+1))
-        Lambda[range(n_f-1), range(1,n_f)] = 2*self.v/h_f
-        Lambda[range(n_f-1), range(0,n_f-1)] = -self.v/h_f
-        Lambda[range(n_f-1), range(2,n_f+1)] = -self.v/h_f
-        Lambda[:,1] += Lambda[:,0] * boundary[0]
-        Lambda[:,-2] += Lambda[:,-1] * boundary[1]
-        Lambda = Lambda[:,1:-1]
+        Lambda = np.zeros((n_f+1, n_f+1))
+        Lambda[range(1,n_f), range(1,n_f)] = 2*self.v/h_f
+        Lambda[[0,-1],[0,-1]] = [self.v/h_f, self.v/h_f]
+        Lambda[range(0,n_f), range(1,n_f+1)] = -self.v/h_f
+        Lambda[range(1,n_f+1), range(0,n_f)] = -self.v/h_f
 
         Theta1 = np.zeros((n_f+1, n_f+1))
         G_values = self.G(np.arange(self.lb, self.ub+0.5*h_f, h_f))
         G_integrals = np.array([quad(self.G, a=self.lb+i*h_f, b=self.lb+(i+1)*h_f)[0] for i in range(n_f)])
-        Theta1[range(n_f), range(1,n_f+1)] = (G_integrals/h_f - G_values[1:])/h_f
-        Theta1[range(1,n_f+1), range(n_f)] = (G_integrals/h_f - G_values[:-1])/h_f
+        Theta1[range(0,n_f), range(1,n_f+1)] = (G_integrals/h_f - G_values[1:])/h_f
+        Theta1[range(1,n_f+1), range(0,n_f)] = (G_integrals/h_f - G_values[:-1])/h_f
         Theta1[range(1,n_f), range(1,n_f)] = 2*G_values[1:-1]/h_f - (G_integrals[:-1] + G_integrals[1:])/h_f**2
-        Theta1[:,1] += Theta1[:,0] * boundary[0]
-        Theta1[:,-2] += Theta1[:,-1] * boundary[1]
-        Theta1 = Theta1[1:-1,1:-1]
 
         Theta2 = np.zeros((n_f+1, n_f+1))
         alpha_values = self.alpha(np.arange(self.lb, self.ub+0.5*h_f, h_f))
         alpha_integrals = np.array([quad(self.alpha, a=self.lb+i*h_f, b=self.lb+(i+1)*h_f)[0] for i in range(n_f)])
-        Theta2[range(n_f), range(1,n_f+1)] = (alpha_integrals/h_f - alpha_values[1:])/h_f
-        Theta2[range(1,n_f+1), range(n_f)] = (alpha_integrals/h_f - alpha_values[:-1])/h_f
+        Theta2[range(0,n_f), range(1,n_f+1)] = (alpha_integrals/h_f - alpha_values[1:])/h_f
+        Theta2[range(1,n_f+1), range(0,n_f)] = (alpha_integrals/h_f - alpha_values[:-1])/h_f
         Theta2[range(1,n_f), range(1,n_f)] = 2*alpha_values[1:-1]/h_f - (alpha_integrals[:-1] + alpha_integrals[1:])/h_f**2
-        Theta2[:,1] += Theta2[:,0] * boundary[0]
-        Theta2[:,-2] += Theta2[:,-1] * boundary[1]
-        Theta2 = Theta2[1:-1,1:-1]
 
         v = np.zeros(n_f+1)
         for i in range(n_f):
             v[i] = -v[:i].sum() - quad(func=lambda x: alpha_x(x)*self.p_infty(x), a=self.lb+i*h_f, b=self.lb+(i+1)*h_f)[0]
+        v[-1] = -v[:-1].sum()
         v = v/h_f
-        v = v[1:-1]
 
-        a = np.zeros(n_f-1)
-        for i in range(n_f-1):
-            a[i] = quad(lambda x: y0(x+self.lb+i*h_f)*(x/h_f), a=0, b=h_f)[0]
-            a[i] += quad(lambda x: y0(x+self.lb+i*h_f)*(2-x/h_f), a=h_f, b=2*h_f)[0]
+        a = np.zeros(n_f+1)
+        a[0] = quad(lambda x: y0(x)*(1-x/h_f), a=0, b=h_f)[0]
+        a[n_f] = quad(lambda x: y0(x+self.ub-h_f)*(x/h_f), a=0, b=h_f)[0]
+        for i in range(1,n_f):
+            a[i] = quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(x/h_f), a=0, b=h_f)[0]
+            a[i] += quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(2-x/h_f), a=h_f, b=2*h_f)[0]
         y0 = np.linalg.solve(Phi, a)
 
         return Phi, Lambda, Theta1, Theta2, v, y0, boundary, h_f
+
+    def _pre_calculations_1d_ck_finite_difference(self, N_x, N_t):
+        """
+        Perform the matrix calculations for the 1d solving problem - Crack-Nicolson.
+        """
+        h_x = self.X/N_x
+        h_t = self.T/N_t 
+
+        G_x = egrad(self.G)
+        G_xx = egrad(G_x)
+
+        x_var = np.arange(self.lb, self.ub+0.9*h_x, h_x)
+        G_x_vector = G_x(x_var)
+        G_xx_vector = G_xx(x_var)
+
+        A = np.zeros((N_x+1, N_x+1))
+        A[range(1,N_x), range(1, N_x)] = 1 + self.v*h_t/h_x**2 - 0.5*G_xx_vector[1:-1]*h_t
+        A[range(1,N_x), range(2, N_x+1)] = -0.5*self.v*h_t/h_x**2 - 0.25*G_x_vector[1:-1]*h_t/h_x
+        A[range(1,N_x), range(0, N_x-1)] = -0.5*self.v*h_t/h_x**2 + 0.25*G_x_vector[1:-1]*h_t/h_x
+        A[[0,0],[0,1]] = [G_x_vector[0]-self.v/h_x, self.v/h_x]
+        A[[-1,-1],[-2,-1]] = [-self.v/h_x, G_x_vector[-1] + self.v/h_x]
+
+        B = np.zeros((N_x+1, N_x+1))
+        B[range(1,N_x), range(1, N_x)] = 1 - self.v*h_t/h_x**2 + 0.5*G_xx_vector[1:-1]*h_t
+        B[range(1,N_x), range(2, N_x+1)] = 0.5*self.v*h_t/h_x**2 + 0.25*G_x_vector[1:-1]*h_t/h_x
+        B[range(1,N_x), range(0, N_x-1)] = 0.5*self.v*h_t/h_x**2 - 0.25*G_x_vector[1:-1]*h_t/h_x
+
+        rho_0 = self.p0(x_var) - self.p_infty(x_var)
+
+        return A, B, rho_0
+
+    def _solve1d_ck_finite_difference(self, N_x, N_t):
+        A, B, rho_0 = self._pre_calculations_1d_ck_finite_difference(N_x, N_t)
+        y = np.zeros((N_t+1, N_x+1))
+        y[0,:] = rho_0
+        for i in tqdm(range(N_t)):
+            y[i+1, :] = B@y[i,:]
+            y[i+1,:] = np.linalg.solve(A, y[i+1,:])
+        return y, 0
 
     def _solve_ricatti(self, A, B, M):
         Pi = solve_continuous_are(a=A, b=B, q=M, r=1)
@@ -661,7 +692,7 @@ class ControlFPequation:
                             t_span=(0,self.T), 
                             t_eval=np.linspace(0,self.T, N_t+1),
                             y0=y0)
-            control = np.zeros(N_t+1)
+            control = np.zeros((1,N_t+1))
         y_vec = sol.y.T
         phi_matrix = np.zeros((n_f-1, N_x+1))
         x = np.arange(-1.0, 1.0+1.8/N_x, 2/N_x)
@@ -694,9 +725,8 @@ class ControlFPequation:
                             t_span=(0,self.T), 
                             t_eval=np.linspace(0,self.T, N_t+1),
                             y0=y0)
-            control = np.zeros(N_t+1)
+            control = np.zeros((1,N_t+1))
         y_vec = sol.y.T
-        y_vec = np.column_stack([boundary[0]*y_vec[:,0], y_vec, boundary[1]*y_vec[:,-1]])
         phi = lambda x, h: x/h * (x < h) * (x >= 0) + (2 - x/h) * (x >= h) * (x <= 2*h)
         phi_matrix = np.zeros((n_f+1, N_x+1))
         x = np.arange(self.lb, self.ub + 0.5*h_x, h_x)
@@ -714,12 +744,14 @@ class ControlFPequation:
             y, control = self._solve1d_spectral_legendre(n_f, N_x, N_t, controlled)
         elif type == 'galerkin_fem':
             y, control = self._solve1d_galerkin_finite_elements(n_f, N_x, N_t, controlled)
+        elif type == 'ck':
+            y, control = self._solve1d_ck_finite_difference(N_x, N_t)
         return y, control
 
 if __name__ == '__main__':
 
     G_func = lambda x: x*x
-    alpha_func = lambda x: x**2*(1/2-x/3)
+    alpha_func = lambda x: x*0#x**2*(1/2-x/3)
     control = lambda t: 1.0
     #p_0 = lambda x: np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
     p_0 = lambda x: 140 * x**3 * (1-x)**3
@@ -742,18 +774,21 @@ if __name__ == '__main__':
     # solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
     
     FP_equation = ControlFPequation(G_func, alpha_func, control, parameters)
-    #solving1 = FP_equation.solve1d(n_f=10, N_x=1000, N_t=1000, type='spectral_galerkin', controlled=False)
-    solving2, control = FP_equation.solve1d(n_f=10, N_x=200, N_t=200, type='spectral_galerkin', controlled=True)
-    #solving2 = FP_equation.solve1d(n_f=20, N_x=1000, N_t=1000, type='galerkin_fem', controlled=False)
+    #solving1, control1  = FP_equation.solve1d(n_f=10, N_x=200, N_t=200, type='spectral_galerkin', controlled=True)
+    #solving1, control1 = FP_equation.solve1d(n_f=15, N_x=200, N_t=200, type='spectral_galerkin', controlled=False)
+    #solving1, control1 = FP_equation.solve1d(n_f=40, N_x=200, N_t=200, type='galerkin_fem', controlled=True)
+    solving2, control2 = FP_equation.solve1d(n_f=100, N_x=1000, N_t=1000, type='galerkin_fem', controlled=False)
+    #solving1, control1 = FP_equation.solve1d(n_f=40, N_x=200, N_t=200, type='galerkin_fem', controlled=True)
+    solving3, control3 = FP_equation.solve1d(N_x=1000, N_t=1000, type='ck', controlled=False)
 
-    x = np.linspace(0, 1, 201)
-    t = np.linspace(0, 1, 201)
+    x = np.linspace(0, 1, 1001)
+    t = np.linspace(0, 1, 1001)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
     ax = plt.axes(projection='3d')
-    #ax.plot_surface(X, T, solving1)
-    ax.plot_surface(X, T, solving2)
+    ax.plot_surface(X, T, solving2-solving3)
+    #ax.plot_surface(X, T, solving2)
     # ax.plot_surface(X, T, solving3)
     # ax.plot_surface(X, T, solving4)
     # ax.plot_surface(X, T, solving5)
@@ -761,14 +796,14 @@ if __name__ == '__main__':
     ax.set_xlabel('x')
     ax.set_ylabel('t')
     ax.set_zlabel('y')
-    plt.show() 
+    plt.show()
 
     # Plotting the convergence speed for controlled x uncontrolled
     #plt.plot(t, np.mean(solving1**2, axis=1), label='controlled')
-    plt.plot(t, np.mean(solving2**2, axis=1) + control**2, label='uncontrolled')
+    #plt.plot(t, np.mean(solving2**2, axis=1), label='uncontrolled')
     #plt.yscale('log')
     #plt.legend()
-    plt.show()   
+    #plt.show()   
 
     # Plotting the integral of x-axis for each time
     # plt.plot(t, solving1.sum(axis=1)/200, label='forward')
@@ -779,4 +814,3 @@ if __name__ == '__main__':
     # plt.plot(t, solving6.sum(axis=1)/200, label='spectral')
     # plt.legend()
     # plt.show() 
-        

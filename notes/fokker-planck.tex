@@ -381,7 +381,8 @@ In this case, we also consider the weak formulation and look for a basis ${\{\ph
 In the interval $[a,b]$, set the {\em node points\/} $a = x_0 < \cdots < x_n = b$.
 The {\em elements\/} are the sub-intervals $[x_i, x_{i+1}]$ with $x_{i+1}-x_i=h$, for $i=0, \dots, n-1$.
 We set the values $\phi_k(x_i) = \delta_{ik}$ and for each element a linear function. 
-Therefore, define the function
+D
+efine the function
 \[
 \phi(x) = \begin{cases}
     x/h, &\text{if } x \in[0,h] \\
@@ -391,7 +392,7 @@ Therefore, define the function
 \]
 and $\phi_{k}(x) = \phi(x-x_{k-1})$, for $k=0, \dots, n$ and $x \in [a,b]$, setting $x_{-1} = a-h$.
 With that in mind, it remain to calculate the same matrices as the previous method.
-Here, the rescale for $[-1,1]$ is not necessary.
+Here, it is not necessary to rescale the function to the interval $[-1,1]$.
 Then, if $i \ge j$,
 
 \[
@@ -482,15 +483,16 @@ and
 v_0 = -\frac{1}{h} \int_a^{a+h} \dot\alpha(y) \steady(y)  \, dy, v_n = \frac{1}{h} \int_{b-h}^{b} \dot\alpha(y) \steady(y)  \, dy.
 \]
 The discrete matrices $A, B$ can be obtained from the same manner. 
-Besides that, we need to consider the boundary condition: $\nu y_x + y G_x = 0$ in the boundary points.
+Besides that, we need to consider the boundary condition $\nu y_x + y G_x = 0$.
 Therefore, 
 \[
 \sum_{j=0}^{n} y_j(t) \left[\nu\dot\phi_j(x) + \dot{G}(x) \phi_j(x)\right] = 0, x=a,b, t \ge 0, 
 \]
 which defines to linear conditions, 
-\[
-y_0(t) \left[-\nu/h + \dot{G}(a)\right] + y_1(t) \left[\nu/h\right] = 0, y_{n-1}(t) \left[-\nu/h\right] + y_n(t) \left[\nu/h + \dot{G}(b)\right] = 0.
-\]
+\begin{gather*}
+    y_0(t) \left[-\nu/h + \dot{G}(a)\right] + y_1(t) \left[\nu/h\right] = 0 \\
+    y_{n-1}(t) \left[-\nu/h\right] + y_n(t) \left[\nu/h + \dot{G}(b)\right] = 0.
+\end{gather*}
 So we can write $y_0(t) = \nu y_1(t)/(\nu-h\dot{G}(a))$ and $y_n(t) = \nu y_{n-1}(t) / (\nu + h\dot{G}(b))$.
 This tells us that we can decrease the system of EDOs in two variables. 
 
