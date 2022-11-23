@@ -524,11 +524,12 @@ class ControlFPequation:
         """
         legendre_family = [legendre(k) for k in range(n_f+1)]
         legendre_family_diff = [np.polyder(poly, 1) for poly in legendre_family]
-        G_x = egrad(self.G)
+        G = lambda x: self.G(0.5*(self.X*x + (self.lb+self.ub)))
+        G_x = egrad(G)
         alpha_x = egrad(self.alpha)
 
         # Calculate boundary conditions restrictions
-        coef = self._solve_system_coefs_spectral_legendre(n_f, G_x(self.lb), G_x(self.ub))
+        coef = self._solve_system_coefs_spectral_legendre(n_f, G_x(-1.0), G_x(1.0))
 
         y0 = lambda x: self.p0(x) - self.p_infty(x)
 
@@ -542,7 +543,7 @@ class ControlFPequation:
         for i in tqdm(range(n_f+1)):
             for j in range(n_f+1):
                 L_dot[i,j] = min(i,j)*(min(i,j)+1)*((i+j)%2==0)
-                G_dot_L[i,j] = quad(func=lambda x: G_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x),
+                G_dot_L[i,j] = quad(func=lambda x: G_x(x)*legendre_family[j](x)*legendre_family_diff[i](x),
                                     a=-1, b=1)[0]
                 alpha_dot_L[i,j] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x),
                                         a=-1, b=1)[0]
@@ -697,7 +698,7 @@ class ControlFPequation:
         phi_matrix = np.zeros((n_f-1, N_x+1))
         x = np.arange(-1.0, 1.0+1.8/N_x, 2/N_x)
         for k in range(n_f-1):
-            phi_matrix[k,:] = legendre_family[k](x) + coef[k,0]*legendre_family[k+1](x) + + coef[k,1]*legendre_family[k+2](x)
+            phi_matrix[k,:] = legendre_family[k](x) + coef[k,0]*legendre_family[k+1](x) + coef[k,1]*legendre_family[k+2](x)
         y = y_vec @ phi_matrix
 
         return y, control[0]
@@ -775,28 +776,28 @@ if __name__ == '__main__':
     
     FP_equation = ControlFPequation(G_func, alpha_func, control, parameters)
     #solving1, control1  = FP_equation.solve1d(n_f=10, N_x=200, N_t=200, type='spectral_galerkin', controlled=True)
-    #solving1, control1 = FP_equation.solve1d(n_f=15, N_x=200, N_t=200, type='spectral_galerkin', controlled=False)
+    solving1, control1 = FP_equation.solve1d(n_f=15, N_x=500, N_t=500, type='spectral_galerkin', controlled=False)
     #solving1, control1 = FP_equation.solve1d(n_f=40, N_x=200, N_t=200, type='galerkin_fem', controlled=True)
-    solving2, control2 = FP_equation.solve1d(n_f=100, N_x=1000, N_t=1000, type='galerkin_fem', controlled=False)
+    solving2, control2 = FP_equation.solve1d(n_f=100, N_x=500, N_t=500, type='galerkin_fem', controlled=False)
     #solving1, control1 = FP_equation.solve1d(n_f=40, N_x=200, N_t=200, type='galerkin_fem', controlled=True)
-    solving3, control3 = FP_equation.solve1d(N_x=1000, N_t=1000, type='ck', controlled=False)
+    solving3, control3 = FP_equation.solve1d(N_x=500, N_t=500, type='ck', controlled=False)
 
-    x = np.linspace(0, 1, 1001)
-    t = np.linspace(0, 1, 1001)
+    x = np.linspace(0, 1, 501)
+    t = np.linspace(0, 1, 501)
     X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
-    ax = plt.axes(projection='3d')
-    ax.plot_surface(X, T, solving2-solving3)
+    #ax = plt.axes(projection='3d')
+    #ax.plot_surface(X, T, solving1)
     #ax.plot_surface(X, T, solving2)
     # ax.plot_surface(X, T, solving3)
     # ax.plot_surface(X, T, solving4)
     # ax.plot_surface(X, T, solving5)
     # ax.plot_surface(X, T, solving6)
-    ax.set_xlabel('x')
-    ax.set_ylabel('t')
-    ax.set_zlabel('y')
-    plt.show()
+    #ax.set_xlabel('x')
+    #ax.set_ylabel('t')
+    #ax.set_zlabel('y')
+    #plt.show()
 
     # Plotting the convergence speed for controlled x uncontrolled
     #plt.plot(t, np.mean(solving1**2, axis=1), label='controlled')
