@@ -363,15 +363,15 @@ with $u(t) = -B^T\Pi y(t)$.
 With this feedback, we solve
 \[
 \begin{split}
-    \Phi \dot{y} &= (A + B^T\Pi y(t) \Theta^2 )y(t) - BB^T\Pi y(t) \\ 
-    &= (A - BB^T\Pi  + B^T\Pi y(t) \Theta^2)y(t).
+    \Phi \dot{y} &= \left(A + {\left(\frac{2}{b-a}\right)}^2 B^T\Pi y(t) \Theta^2 \right)y(t) - BB^T\Pi y(t) \\ 
+    &= \left(A - BB^T\Pi  + {\left(\frac{2}{b-a}\right)}^2 B^T\Pi y(t) \Theta^2 \right)y(t).
 \end{split}
 \]
 After solving this system, we have to come back to the original coordinate system.
 
 \begin{remark}
     Notice that $M_{ij} = \inner{\mathcal{M} \phi_j}{\phi_i}$.
-    For instance, if $\mathcal{M}$ is the identity operator, we have $M = \Lambda$.
+    For instance, if $\mathcal{M}$ is the identity operator, we have $M = \Phi$.
 \end{remark}
 
 \subsection{Finite elements}

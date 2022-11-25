@@ -466,7 +466,7 @@ class FokkerPlanckEquation:
 
 class ControlFPequation:
 
-    def __init__(self, G_func, alpha_func, control, parameters) -> None:
+    def __init__(self, G_func, alpha_func, parameters) -> None:
         """
         Consider the equation 
         p_t = v * delta p + nabla . (p * nabla (G + alpha * u))  
@@ -477,13 +477,12 @@ class ControlFPequation:
                 It is a function whose parameter is a vector x and returns a single-value.
         alpha_func: The function alpha, which indicates the shape control in the space. 
                 It is a function whose parameter is a vector x and returns a single-value.
-        control: The function u, which measures the used control in the model.
-                It is a function whose parameter is a positive real t and returns a single value.
         parameters: Dictionary with additional fixed parameters: v (rate), T (final time), p_0 (initial function) and interval.
         """
         self.G = G_func
+        self.G_x = None
         self.alpha = alpha_func
-        self.u = control
+        self.alpha_x = None
         self.v = parameters['v']
         self.T = parameters['T']
         self.p0 = parameters['p_0']
@@ -525,8 +524,12 @@ class ControlFPequation:
         legendre_family = [legendre(k) for k in range(n_f+1)]
         legendre_family_diff = [np.polyder(poly, 1) for poly in legendre_family]
         G = lambda x: self.G(0.5*(self.X*x + (self.lb+self.ub)))
+        alpha = lambda x: self.alpha(0.5*(self.X*x + (self.lb+self.ub)))
         G_x = egrad(G)
-        alpha_x = egrad(self.alpha)
+        if self.alpha_x is None:
+            alpha_x = egrad(alpha)
+        else:
+            alpha_x = self.alpha_x
 
         # Calculate boundary conditions restrictions
         coef = self._solve_system_coefs_spectral_legendre(n_f, G_x(-1.0), G_x(1.0))
@@ -545,9 +548,9 @@ class ControlFPequation:
                 L_dot[i,j] = min(i,j)*(min(i,j)+1)*((i+j)%2==0)
                 G_dot_L[i,j] = quad(func=lambda x: G_x(x)*legendre_family[j](x)*legendre_family_diff[i](x),
                                     a=-1, b=1)[0]
-                alpha_dot_L[i,j] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*legendre_family[j](x)*legendre_family_diff[i](x),
+                alpha_dot_L[i,j] = quad(func=lambda x: alpha_x(x)*legendre_family[j](x)*legendre_family_diff[i](x),
                                         a=-1, b=1)[0]
-            steady_L[i] = quad(func=lambda x: alpha_x(0.5*(self.X*x + self.lb+self.ub))*self.p_infty(0.5*(self.X*x + self.lb+self.ub))*legendre_family_diff[i](x), 
+            steady_L[i] = quad(func=lambda x: alpha_x(x)*self.p_infty(0.5*(self.X*x + self.lb+self.ub))*legendre_family_diff[i](x), 
                                a=-1, b=1)[0]
             y0_L[i] = quad(func=lambda x: y0(0.5*(self.X*x + self.lb+self.ub))*legendre_family[i](x), 
                               a=-1, b=1)[0]
@@ -582,8 +585,6 @@ class ControlFPequation:
         alpha_x = egrad(self.alpha)
         G_x = egrad(self.G)
         y0 = lambda x: self.p0(x) - self.p_infty(x)
-
-        boundary = [self.v/(self.v - h_f*G_x(self.lb)), self.v/(self.v + h_f*G_x(self.ub))]
 
         Phi = np.zeros((n_f+1, n_f+1))
         Phi[range(1,n_f), range(1,n_f)] = 2*h_f/3
@@ -625,7 +626,7 @@ class ControlFPequation:
             a[i] += quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(2-x/h_f), a=h_f, b=2*h_f)[0]
         y0 = np.linalg.solve(Phi, a)
 
-        return Phi, Lambda, Theta1, Theta2, v, y0, boundary, h_f
+        return Phi, Lambda, Theta1, Theta2, v, y0, h_f
 
     def _pre_calculations_1d_ck_finite_difference(self, N_x, N_t):
         """
@@ -705,7 +706,7 @@ class ControlFPequation:
 
     def _solve1d_galerkin_finite_elements(self, n_f, N_x, N_t, controlled=True):
         
-        Phi, Lambda, Theta1, Theta2, v, y0, boundary, h_f = self._pre_calculations_1d_finite_elements(n_f)
+        Phi, Lambda, Theta1, Theta2, v, y0, h_f = self._pre_calculations_1d_finite_elements(n_f)
         Phi_inv = np.linalg.inv(Phi)
         A = -(Lambda + Theta1)
         B = -v.reshape((-1,1))
@@ -751,19 +752,19 @@ class ControlFPequation:
 
 if __name__ == '__main__':
 
-    G_func = lambda x: x*x
-    alpha_func = lambda x: x*0#x**2*(1/2-x/3)
-    control = lambda t: 1.0
+    #G_func = lambda x: (x-0.5)*(x-0.5)
+    #alpha_func = lambda x: x**2*(1/2-x/3)
+    #control = lambda t: 1.0
     #p_0 = lambda x: np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
-    p_0 = lambda x: 140 * x**3 * (1-x)**3
+    #p_0 = lambda x: 140 * x**3 * (1-x)**3
     #p_0 = lambda x: truncnorm(a=-0.5/1e-2, b=0.5/1e-2, loc=0.5, scale=1e-2).pdf(x)
     #def p_0(x):
     #    l = 0.01
     #    h = 1/l
     #    return h/l * (abs(x-0.5) < l) * (l + (x-0.5)*(x<=0.5) - (x-0.5)*(x>0.5))
 
-    interval = [0.0, 1.0]
-    parameters = {'v': 0.1, 'T': 1.0, 'p_0': p_0, 'interval': interval}
+    #interval = [0.0, 1.0]
+    #parameters = {'v': 0.1, 'T': 0.1, 'p_0': p_0, 'interval': interval}
 
     #FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
@@ -774,17 +775,17 @@ if __name__ == '__main__':
     # solving5 = FP_equation.solve1d(N_x=200, N_t=15000, type='chang_cooper')
     # solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
     
-    FP_equation = ControlFPequation(G_func, alpha_func, control, parameters)
-    #solving1, control1  = FP_equation.solve1d(n_f=10, N_x=200, N_t=200, type='spectral_galerkin', controlled=True)
-    solving1, control1 = FP_equation.solve1d(n_f=15, N_x=500, N_t=500, type='spectral_galerkin', controlled=False)
+    #FP_equation = ControlFPequation(G_func, alpha_func, parameters)
+    #solving1, control1  = FP_equation.solve1d(n_f=15, N_x=1000, N_t=1000, type='spectral_galerkin', controlled=True)
+    #solving1, control1 = FP_equation.solve1d(n_f=15, N_x=500, N_t=500, type='spectral_galerkin', controlled=True)
+    #solving2, control2 = FP_equation.solve1d(n_f=500, N_x=1000, N_t=1000, type='galerkin_fem', controlled=True)
+    #solving2, control2 = FP_equation.solve1d(n_f=100, N_x=500, N_t=500, type='galerkin_fem', controlled=True)
     #solving1, control1 = FP_equation.solve1d(n_f=40, N_x=200, N_t=200, type='galerkin_fem', controlled=True)
-    solving2, control2 = FP_equation.solve1d(n_f=100, N_x=500, N_t=500, type='galerkin_fem', controlled=False)
-    #solving1, control1 = FP_equation.solve1d(n_f=40, N_x=200, N_t=200, type='galerkin_fem', controlled=True)
-    solving3, control3 = FP_equation.solve1d(N_x=500, N_t=500, type='ck', controlled=False)
+    #solving3, control3 = FP_equation.solve1d(N_x=500, N_t=500, type='ck', controlled=False)
 
-    x = np.linspace(0, 1, 501)
-    t = np.linspace(0, 1, 501)
-    X, T = np.meshgrid(x,t)
+    #x = np.linspace(0, 1, 1001)
+    #t = np.linspace(0, 0.1, 1001)
+    #X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
     #ax = plt.axes(projection='3d')
@@ -800,8 +801,8 @@ if __name__ == '__main__':
     #plt.show()
 
     # Plotting the convergence speed for controlled x uncontrolled
-    #plt.plot(t, np.mean(solving1**2, axis=1), label='controlled')
-    #plt.plot(t, np.mean(solving2**2, axis=1), label='uncontrolled')
+    #plt.plot(t, np.mean(solving1**2, axis=1) + control1**2, label='controlled')
+    #plt.plot(t, np.mean(solving2**2, axis=1) + control2**2, label='uncontrolled')
     #plt.yscale('log')
     #plt.legend()
     #plt.show()   
@@ -815,3 +816,36 @@ if __name__ == '__main__':
     # plt.plot(t, solving6.sum(axis=1)/200, label='spectral')
     # plt.legend()
     # plt.show() 
+
+    h = 0.2
+    omega_values = np.arange(h,1,h)
+    G_func = lambda x: x**2
+    p_0 = lambda x: 140 * x**3 * (1-x)**3
+    interval = [-1.0, 1.0]
+    parameters = {'v': 0.1, 'T': 20.0, 'p_0': p_0, 'interval': interval}
+    cost_values = []
+    for omega in tqdm(omega_values):
+        alpha_func = lambda x: x * (omega - 0.5*h <= x) * (omega + 0.5*h >= x)
+        FP_equation = ControlFPequation(G_func, alpha_func, parameters)
+        FP_equation.alpha_x = lambda x: 1*(omega - 0.5*h <= x) * (omega + 0.5*h >= x)
+        y, u  = FP_equation.solve1d(n_f=30, N_x=1000, N_t=1000, type='galerkin_fem', controlled=True)
+        cost = 0.5*parameters['T']*((y**2).mean(axis=1) + u).mean()
+        cost_values.append(cost)    
+
+    fig, ax1 = plt.subplots()
+    
+    color = 'red'
+    ax1.set_xlabel(r'$\omega$')
+    ax1.set_ylabel(r'$y_0$', color=color)
+    ax1.plot(omega_values, p_0(omega_values) - FP_equation.p_infty(omega_values), 
+             label='initial_condition', color=color)
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax2 = ax1.twinx()
+
+    color = 'blue'
+    ax2.set_ylabel('J(y,u)', color=color)
+    ax2.plot(omega_values, cost_values, label='cost', color=color)
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    fig.legend()
+    plt.show()
