@@ -548,10 +548,10 @@ class ControlFPequation:
                 L_dot[i,j] = min(i,j)*(min(i,j)+1)*((i+j)%2==0)
                 G_dot_L[i,j] = quad(func=lambda x: G_x(x)*legendre_family[j](x)*legendre_family_diff[i](x),
                                     a=-1, b=1)[0]
-                alpha_dot_L[i,j] = quad(func=lambda x: alpha_x(x)*legendre_family[j](x)*legendre_family_diff[i](x),
-                                        a=-1, b=1)[0]
-            steady_L[i] = quad(func=lambda x: alpha_x(x)*self.p_infty(0.5*(self.X*x + self.lb+self.ub))*legendre_family_diff[i](x), 
-                               a=-1, b=1)[0]
+                alpha_dot_L[i,j] = quad(func=lambda x: legendre_family[j](x)*legendre_family_diff[i](x),
+                                        a=self.lim1, b=self.lim2)[0]
+            steady_L[i] = quad(func=lambda x: self.p_infty(0.5*(self.X*x + self.lb+self.ub))*legendre_family_diff[i](x), 
+                               a=self.lim1, b=self.lim2)[0]
             y0_L[i] = quad(func=lambda x: y0(0.5*(self.X*x + self.lb+self.ub))*legendre_family[i](x), 
                               a=-1, b=1)[0]
         
@@ -625,6 +625,8 @@ class ControlFPequation:
             a[i] = quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(x/h_f), a=0, b=h_f)[0]
             a[i] += quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(2-x/h_f), a=h_f, b=2*h_f)[0]
         y0 = np.linalg.solve(Phi, a)
+
+        print(y0)
 
         return Phi, Lambda, Theta1, Theta2, v, y0, h_f
 
@@ -818,9 +820,9 @@ if __name__ == '__main__':
     # plt.show() 
 
     h = 0.2
-    omega_values = np.arange(h,1,h)
+    omega_values = np.arange(-1+h,1,h)
     G_func = lambda x: x**2
-    p_0 = lambda x: 140 * x**3 * (1-x)**3
+    p_0 = lambda x: truncnorm(loc=0.0, scale=0.5, a=-2, b=2).pdf(x)
     interval = [-1.0, 1.0]
     parameters = {'v': 0.1, 'T': 20.0, 'p_0': p_0, 'interval': interval}
     cost_values = []
@@ -828,23 +830,31 @@ if __name__ == '__main__':
         alpha_func = lambda x: x * (omega - 0.5*h <= x) * (omega + 0.5*h >= x)
         FP_equation = ControlFPequation(G_func, alpha_func, parameters)
         FP_equation.alpha_x = lambda x: 1*(omega - 0.5*h <= x) * (omega + 0.5*h >= x)
-        y, u  = FP_equation.solve1d(n_f=30, N_x=1000, N_t=1000, type='galerkin_fem', controlled=True)
-        cost = 0.5*parameters['T']*((y**2).mean(axis=1) + u).mean()
-        cost_values.append(cost)    
+        FP_equation.lim1 = omega - 0.5*h
+        FP_equation.lim2 = omega + 0.5*h
+        y, u  = FP_equation.solve1d(n_f=15, N_x=200, N_t=200, type='spectral_galerkin', controlled=True)
+        cost = 0.5*parameters['T']*(2*(y**2).mean(axis=1) + u**2).mean()
+        cost_values.append(cost)
 
     fig, ax1 = plt.subplots()
     
     color = 'red'
     ax1.set_xlabel(r'$\omega$')
     ax1.set_ylabel(r'$y_0$', color=color)
-    ax1.plot(omega_values, p_0(omega_values) - FP_equation.p_infty(omega_values), 
-             label='initial_condition', color=color)
+    x = np.linspace(-1,1,1000)
+    ax1.plot(x, p_0(x)-FP_equation.p_infty(x), 
+             label='Initial condition for y', color=color)
     ax1.tick_params(axis='y', labelcolor=color)
     ax2 = ax1.twinx()
 
     color = 'blue'
     ax2.set_ylabel('J(y,u)', color=color)
-    ax2.plot(omega_values, cost_values, label='cost', color=color)
+    for i, omega in tqdm(enumerate(omega_values)):
+        if i != 0:
+            label = ''
+        else:
+            label = 'Cost'
+        ax2.hlines(cost_values[i], xmin=omega-h/2, xmax=omega+h/2, label=label, color=color)
     ax2.tick_params(axis='y', labelcolor=color)
 
     fig.legend()
