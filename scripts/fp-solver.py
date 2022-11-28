@@ -5,7 +5,7 @@ import autograd.numpy as np
 from autograd import elementwise_grad as egrad, grad
 
 from scipy.integrate import quad, solve_ivp
-from scipy.stats import norm, truncnorm
+from scipy.stats import norm, truncnorm, beta
 from scipy.linalg import solve_banded, solve_continuous_are
 from scipy.special import legendre
 from scipy.interpolate import lagrange
@@ -626,8 +626,6 @@ class ControlFPequation:
             a[i] += quad(lambda x: y0(x+self.lb+(i-1)*h_f)*(2-x/h_f), a=h_f, b=2*h_f)[0]
         y0 = np.linalg.solve(Phi, a)
 
-        print(y0)
-
         return Phi, Lambda, Theta1, Theta2, v, y0, h_f
 
     def _pre_calculations_1d_ck_finite_difference(self, N_x, N_t):
@@ -704,7 +702,13 @@ class ControlFPequation:
             phi_matrix[k,:] = legendre_family[k](x) + coef[k,0]*legendre_family[k+1](x) + coef[k,1]*legendre_family[k+2](x)
         y = y_vec @ phi_matrix
 
-        return y, control[0]
+        cost = 0
+        for i in range(N_t+1):
+            cost += y_vec[[i],:]@(Phi + Pi.T@B@B.T@Pi)@y_vec[[i],:].T
+        cost *= self.T
+        cost /= (2*N_t+2)
+
+        return y, cost, control[0]
 
     def _solve1d_galerkin_finite_elements(self, n_f, N_x, N_t, controlled=True):
         
@@ -731,42 +735,48 @@ class ControlFPequation:
                             y0=y0)
             control = np.zeros((1,N_t+1))
         y_vec = sol.y.T
-        phi = lambda x, h: x/h * (x < h) * (x >= 0) + (2 - x/h) * (x >= h) * (x <= 2*h)
-        phi_matrix = np.zeros((n_f+1, N_x+1))
-        x = np.arange(self.lb, self.ub + 0.5*h_x, h_x)
-        for k in range(n_f+1):
-            phi_matrix[k,:] = phi(x - (self.lb + (k-1)*h_f), h_f)
-        y = y_vec @ phi_matrix
+        # phi = lambda x, h: x/h * (x < h) * (x >= 0) + (2 - x/h) * (x >= h) * (x <= 2*h)
+        # phi_matrix = np.zeros((n_f+1, N_x+1))
+        # x = np.arange(self.lb, self.ub + 0.5*h_x, h_x)
+        # for k in range(n_f+1):
+        #     phi_matrix[k,:] = phi(x - (self.lb + (k-1)*h_f), h_f)
+        # y = y_vec @ phi_matrix
 
-        return y, control[0]
+        cost = 0
+        for i in range(N_t+1):
+            cost += y_vec[[i],:]@(Phi + Pi.T@B@B.T@Pi)@y_vec[[i],:].T
+        cost *= self.T
+        cost /= (2*N_t+2)
+
+        return cost, control[0]
 
     def solve1d(self, N_x=None, N_t=None, n_f=None, controlled=True, type='spectral_galerkin'):
         """
         Solves the Fokker-Planck equation in 1 dimension, including initial and boundary conditions.
         """
         if type == 'spectral_galerkin':
-            y, control = self._solve1d_spectral_legendre(n_f, N_x, N_t, controlled)
+            y, cost, control = self._solve1d_spectral_legendre(n_f, N_x, N_t, controlled)
         elif type == 'galerkin_fem':
             y, control = self._solve1d_galerkin_finite_elements(n_f, N_x, N_t, controlled)
         elif type == 'ck':
             y, control = self._solve1d_ck_finite_difference(N_x, N_t)
-        return y, control
+        return y, cost, control
 
 if __name__ == '__main__':
 
-    #G_func = lambda x: (x-0.5)*(x-0.5)
-    #alpha_func = lambda x: x**2*(1/2-x/3)
+    G_func = lambda x: x**2
+    alpha_func = lambda x: x #x**2*(1/2-x/3)
     #control = lambda t: 1.0
     #p_0 = lambda x: np.exp(-x*x)/(np.sqrt(np.pi)*(norm.cdf(np.sqrt(2)) - 0.5))
-    #p_0 = lambda x: 140 * x**3 * (1-x)**3
+    p_0 = lambda x: 0.5*beta(10,10).pdf(x/2+1/2)
     #p_0 = lambda x: truncnorm(a=-0.5/1e-2, b=0.5/1e-2, loc=0.5, scale=1e-2).pdf(x)
     #def p_0(x):
     #    l = 0.01
     #    h = 1/l
     #    return h/l * (abs(x-0.5) < l) * (l + (x-0.5)*(x<=0.5) - (x-0.5)*(x>0.5))
 
-    #interval = [0.0, 1.0]
-    #parameters = {'v': 0.1, 'T': 0.1, 'p_0': p_0, 'interval': interval}
+    interval = [-1.0, 1.0]
+    parameters = {'v': 0.1, 'T': 100.0, 'p_0': p_0, 'interval': interval}
 
     #FP_equation = FokkerPlanckEquation(G_func, alpha_func, control, parameters)
 
@@ -777,30 +787,32 @@ if __name__ == '__main__':
     # solving5 = FP_equation.solve1d(N_x=200, N_t=15000, type='chang_cooper')
     # solving6 = FP_equation.solve1d(n_f=20, N_x=200, N_t=15000, type='spectral_collocation')
     
-    #FP_equation = ControlFPequation(G_func, alpha_func, parameters)
-    #solving1, control1  = FP_equation.solve1d(n_f=15, N_x=1000, N_t=1000, type='spectral_galerkin', controlled=True)
+    # FP_equation = ControlFPequation(G_func, alpha_func, parameters)
+    # FP_equation.lim1 = -0.5
+    # FP_equation.lim2 = 0.5
+    # solving1, control1  = FP_equation.solve1d(n_f=20, N_x=200, N_t=10000, type='spectral_galerkin', controlled=True)
     #solving1, control1 = FP_equation.solve1d(n_f=15, N_x=500, N_t=500, type='spectral_galerkin', controlled=True)
     #solving2, control2 = FP_equation.solve1d(n_f=500, N_x=1000, N_t=1000, type='galerkin_fem', controlled=True)
     #solving2, control2 = FP_equation.solve1d(n_f=100, N_x=500, N_t=500, type='galerkin_fem', controlled=True)
     #solving1, control1 = FP_equation.solve1d(n_f=40, N_x=200, N_t=200, type='galerkin_fem', controlled=True)
     #solving3, control3 = FP_equation.solve1d(N_x=500, N_t=500, type='ck', controlled=False)
 
-    #x = np.linspace(0, 1, 1001)
-    #t = np.linspace(0, 0.1, 1001)
-    #X, T = np.meshgrid(x,t)
+    x = np.linspace(-1, 1, 201)
+    t = np.linspace(0, 2, 1001)
+    X, T = np.meshgrid(x,t)
 
     # Plotting the 3d figure
     #ax = plt.axes(projection='3d')
     #ax.plot_surface(X, T, solving1)
     #ax.plot_surface(X, T, solving2)
-    # ax.plot_surface(X, T, solving3)
+    #ax.plot_surface(X, T, solving3)
     # ax.plot_surface(X, T, solving4)
     # ax.plot_surface(X, T, solving5)
     # ax.plot_surface(X, T, solving6)
-    #ax.set_xlabel('x')
-    #ax.set_ylabel('t')
-    #ax.set_zlabel('y')
-    #plt.show()
+    # ax.set_xlabel('x')
+    # ax.set_ylabel('t')
+    # ax.set_zlabel('y')
+    # plt.show()
 
     # Plotting the convergence speed for controlled x uncontrolled
     #plt.plot(t, np.mean(solving1**2, axis=1) + control1**2, label='controlled')
@@ -822,9 +834,9 @@ if __name__ == '__main__':
     h = 0.2
     omega_values = np.arange(-1+h,1,h)
     G_func = lambda x: x**2
-    p_0 = lambda x: truncnorm(loc=0.0, scale=0.5, a=-2, b=2).pdf(x)
+    p_0 = lambda x: 0.5*beta(10,10).pdf(x/2+1/2)
     interval = [-1.0, 1.0]
-    parameters = {'v': 0.1, 'T': 20.0, 'p_0': p_0, 'interval': interval}
+    parameters = {'v': 0.1, 'T': 2.0, 'p_0': p_0, 'interval': interval}
     cost_values = []
     for omega in tqdm(omega_values):
         alpha_func = lambda x: x * (omega - 0.5*h <= x) * (omega + 0.5*h >= x)
@@ -832,9 +844,25 @@ if __name__ == '__main__':
         FP_equation.alpha_x = lambda x: 1*(omega - 0.5*h <= x) * (omega + 0.5*h >= x)
         FP_equation.lim1 = omega - 0.5*h
         FP_equation.lim2 = omega + 0.5*h
-        y, u  = FP_equation.solve1d(n_f=15, N_x=200, N_t=200, type='spectral_galerkin', controlled=True)
-        cost = 0.5*parameters['T']*(2*(y**2).mean(axis=1) + u**2).mean()
+        y, cost, u  = FP_equation.solve1d(n_f=20, N_x=200, N_t=1000, type='spectral_galerkin', controlled=True)
         cost_values.append(cost)
+
+        ax = plt.axes(projection='3d')
+        ax.plot_surface(X, T, y)
+        ax.set_xlabel('x')
+        ax.set_ylabel('t')
+        ax.set_zlabel('y')
+        plt.show()
+
+        plt.plot(t, u)
+        plt.show()
+
+        ax = plt.axes(projection='3d')
+        ax.plot_surface(X, T, (alpha_func(X).T * u).T)
+        ax.set_xlabel('x')
+        ax.set_ylabel('t')
+        ax.set_zlabel('y')
+        plt.show()
 
     fig, ax1 = plt.subplots()
     
@@ -849,7 +877,7 @@ if __name__ == '__main__':
 
     color = 'blue'
     ax2.set_ylabel('J(y,u)', color=color)
-    for i, omega in tqdm(enumerate(omega_values)):
+    for i, omega in enumerate(omega_values):
         if i != 0:
             label = ''
         else:
