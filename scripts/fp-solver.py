@@ -838,6 +838,8 @@ if __name__ == '__main__':
     interval = [-1.0, 1.0]
     parameters = {'v': 0.1, 'T': 2.0, 'p_0': p_0, 'interval': interval}
     cost_values = []
+    y_values = []
+    control_values = []
     for omega in tqdm(omega_values):
         alpha_func = lambda x: x * (omega - 0.5*h <= x) * (omega + 0.5*h >= x)
         FP_equation = ControlFPequation(G_func, alpha_func, parameters)
@@ -846,6 +848,8 @@ if __name__ == '__main__':
         FP_equation.lim2 = omega + 0.5*h
         y, cost, u  = FP_equation.solve1d(n_f=20, N_x=200, N_t=1000, type='spectral_galerkin', controlled=True)
         cost_values.append(cost)
+        y_values.append(y)
+        control_values.append(u)
 
         ax = plt.axes(projection='3d')
         ax.plot_surface(X, T, y)
