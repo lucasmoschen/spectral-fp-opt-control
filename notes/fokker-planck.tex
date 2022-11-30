@@ -24,6 +24,7 @@
 \newcommand{\n}{\vec{n}}
 \newcommand{\steady}{\rho_{\infty}}
 \newcommand{\inner}[2]{\langle{} #1, #2 \rangle{}}
+\newcommand{\rhovec}{\underline{\rho}}
 
 \newtheorem{theorem}{Theorem}[subsection]
 \newtheorem{proposition}{Proposition}[subsection]
@@ -495,6 +496,131 @@ which defines to linear conditions,
 \end{gather*}
 So we can write $y_0(t) = \nu y_1(t)/(\nu-h\dot{G}(a))$ and $y_n(t) = \nu y_{n-1}(t) / (\nu + h\dot{G}(b))$.
 This tells us that we can decrease the system of EDOs in two variables. 
+
+\section{Optimality conditions}
+
+From now on, we consider the following optimal control problem:
+\begin{align}
+    \label{eq:cost_functional_fp}
+    \min_u J(\rho, u) &:= \frac{1}{2}\int_0^T \alpha_Q\|\rho - \rho_Q\|^2_{L^2(\Omega)} + \gamma |u(t)|^2 + 2\beta u(t) \, dt + \alpha_{\Omega} \|\rho(\cdot, T) - \rho_{\Omega}\|^2_{L^2(\Omega)} \\
+    \text{s.t. } &\partial_t \rho(x,t) - \nabla \cdot (\nu \nabla \rho(x,t) + \rho(x,t) W[u(t)]), (x,t) \in \Omega \times (0,T), \\
+    &\rho(x,0) = \rho_0(x), x \in \Omega \\
+    &(\nu \nabla \rho(x,t) + \rho(x,t) W[u(t)]) \cdot \n = 0, (x,t) \in \partial \Omega \times (0,T),
+\end{align}
+for a fixed time $T$, a bounded set $\Omega \subseteq \R^n$ and $W[u(t)] = c(x) + u(t) b(x)$, where $b,c \in L^{\infty}(\Omega; \R^n)$ such that $\nabla b \cdot \n = 0$ on the boundary and $u \in L^{\infty}(0,T)$.
+Moreover, we assume that $\rho_0 \in L^1(\Omega)$. 
+The weak formulation of the PDE is given by 
+\begin{equation}
+    \label{eq:fp_equation_weak}
+    \int_{\Omega} \partial_t \rho(x,t) \phi(x) \, dx = -\int_{\Omega} (\nu \nabla \rho(x,t) + \rho(x,t) W[u(t)]) \cdot \nabla \phi(x) \, dx,
+\end{equation}
+after integrating by parts. 
+
+We first discretise the PDE through the spectral method. 
+Therefore, we set
+\begin{equation}
+    \label{eq:spectral_method_approx}
+    \rho(x,t) = \sum_{i=0}^{N-2} \rho_j(t) \phi_j(x),
+\end{equation}
+where ${\{\phi_j\}}_{j=0}^{N-2}$ is a basis of functions for a pre-specified set of functions.
+
+Substituting the approximation in~\eqref{eq:spectral_method_approx} to the weak formulation in~\eqref{eq:spectral_method_approx} we get 
+\[
+\sum_{j=0}^{N-2} \rho_j(t) \int_{\Omega} \phi_j(x) \phi(x) \, dx = - \sum_{j=0}^{N-2} \rho_j(t)\int_{\Omega} (\nu \nabla \phi_j(x) + W[u(t)]\phi_j(x)) \cdot \nabla \phi(x) \, dx.
+\]
+
+The Spectral Galerkin method chooses the test functions to be the sabe as the trials, leading to, for $i=0,\dots,N-2$.
+\[
+\sum_{j=0}^{N-2} \rho_j(t) \int_{\Omega} \phi_j(x) \phi_i(x) \, dx = - \sum_{j=0}^{N-2} \rho_j(t)\int_{\Omega} (\nu \nabla \phi_j(x) + W[u(t)]\phi_j(x)) \cdot \nabla \phi_i(x) \, dx.
+\]
+Define the matrices 
+\begin{align*}
+    \Phi_{ij} &= \int_{\Omega} \phi_j(x) \phi_i(x) \, dx \\ 
+    \Lambda_{ij} &= \int_{\Omega} \nu \nabla \phi_j(x) \cdot \nabla \phi_i(x) \, dx \\
+    B_{ij} &= \int_{\Omega} \phi_j(x) b(x) \cdot \nabla \phi_i(x) \, dx \\
+    C_{ij} &= \int_{\Omega} \phi_j(x) c(x) \cdot \nabla \phi_i(x) \, dx,
+\end{align*}
+which allows us to rewrite the discrete version of the PDE in a system of ODEs as
+\[
+\Phi \dot{\rhovec}(t) = -(\Lambda + C + u(t) B) \rhovec(t), t \in (0,T)    
+\]
+where $\rhovec = (\rho_0(t), \rho_1(t), \dots, \rho_{n-2}(t)) \in W^{1,\infty}([0,T]; \R^{N-1})$.
+The next step is to consider the discrete version of the cost functional:
+\[
+\begin{split}
+    \frac{1}{2} \int_0^T \gamma|u(t)|^2 &+ 2\beta u(t) \\
+    &+ \alpha_Q \sum_{i=0}^{N-2} \sum_{j=0}^{N-2} (\rho_i(t) - \rho_{Q,i}(t))(\rho_j(t) - \rho_{Q,j}(t))\int_{\Omega} \phi_i(x) \phi_j(x) \, dx \, dt \\
+    &+\alpha_{\Omega} \sum_{i=0}^{N-2} \sum_{j=0}^{N-2} (\rho_i(T) - \rho_{\Omega,i})(\rho_j(T) - \rho_{\Omega,j})\int_{\Omega} \phi_i(x) \phi_j(x) \, dx \\
+    = \frac{1}{2} \int_0^T \gamma|u(t)|^2 &+ 2\beta u(t) \\
+    &+ \alpha_Q {(\rhovec(t) - \rhovec_Q(t))}^T  \Phi {(\rhovec(t) - \rhovec_Q(t))} \, dt + \alpha_{\Omega} {(\rhovec(T) - \rhovec_{\Omega})}^T  \Phi {(\rhovec(T) - \rhovec_{\Omega})},
+\end{split}
+\]
+where $\rhovec_Q$ and  $\rhovec_{\Omega}$ are the coefficients of the spectral representation of $\rho_{Q}$ and $\rho_{\Omega}$.
+We also define $\rhovec_0$ as the coefficients of the spectral representation of $\rho_0$.
+Just as a reminder, they are calculated through the system of equations
+\[
+\sum_{j=0}^{N-2} \rho_j(0) \int_{\Omega} \phi_j(x) \phi_i(x) \, dx = \int_{\Omega} \rho_0(x) \phi_i(x), i=0,\dots,N-2.    
+\]
+
+Therefore, the finite-dimension optimal control problem is given by
+\begin{align*}
+    \min_u \frac{1}{2} &\int_0^T \gamma|u(t)|^2 + 2\beta u(t) + \alpha_Q {(\rhovec(t) - \rhovec_Q(t))}^T  \Phi {(\rhovec(t) - \rhovec_Q(t))} \, dt \\ 
+    &+ \alpha_{\Omega} {(\rhovec(T) - \rhovec_{\Omega})}^T  \Phi {(\rhovec(T) - \rhovec_{\Omega})}, \\
+    \text{s.t. } &\dot{\rhovec}(t) = -\Phi^{-1}(\Lambda + C + u(t) B) \rhovec(t), t \in (0,T), \\
+    &\rhovec(0) = \rhovec_0,
+\end{align*}
+where the basis of functions are chosen to satisfy the boundary conditions.
+
+Let $q \in W^{1,\infty}([0,T]; R^{N-2})$. 
+The Hamiltonian of the above problem is given by
+\[
+H(\rho,q,t) = -\underline{q}^T(t) \Phi^{-1} (\Lambda + C + u(t)B) \rhovec(t) + \frac{1}{2}\alpha_Q  \|\rhovec(t) - \rhovec_Q(t)\|_{\Phi} + \frac{1}{2}\gamma {u(t)}^2 + \beta u(t),
+\]
+where $q$ satisfies the adjoint equation
+\begin{align*}
+    \dot{q} &= - H_{\rhovec} = {(\Lambda + C + uB)}^T\Phi^{-1} \underline{q} - \alpha_Q \Phi {(\rhovec(t) - \rhovec_Q(t))} \\
+    q(T) &= \alpha_{\Omega} \Phi(\rhovec(T) - \rhovec_{\Omega}).
+\end{align*}
+
+Finally, the optimal solution solves for each $t \in (0,T)$,
+\[
+u^*(t) = \arg \min \left\{-u(t)q^T(t)\Phi^{-1}B \rhovec + \gamma {u(t)}^2/2 + \beta u(t) \right\},
+\]
+which is given by
+\[
+u^*(t) = (q^T\Phi^{-1} B \rhovec - \beta)/\gamma.    
+\]
+
+Going back to the infinite dimensional optimal control problem in~\eqref{eq:cost_functional_fp}, 
+~\cite{aronna2021first} derives the adjoint equation for the {\em adjoint state\/} $p$ associated with $(\rho, u)$, which in the weak formulation is written as
+\[
+\int_{\Omega} \left(-\partial_t p \phi + \nu \nabla p \cdot \nabla \phi + (W[u]\cdot\nabla p) \phi\right) \, dx = \alpha_Q \int_{\Omega} (\rho - \rho_Q) \phi \, dx,
+\]
+with final time $p(x,T) = \alpha_{\Omega}(\rho(x,T) - \rho_{\Omega})$ in $\Omega$ and $\partial_N p = 0$ on $\partial \Omega$.
+
+The optimal solution is given by 
+\[
+u^*(t) = \left(\int_{\Omega} \rho(x,t) b(x) \nabla p(x,t) \, dx  - \beta \right)/\gamma
+\]
+
+Using the spectral approximation, we get 
+\[
+p(x,t) = \sum_{j=0}^{N-2} p_j(t) \phi_j(x),
+\]
+and testing against the same basis of functions, we get 
+\[
+-\Phi \dot{\overline{p}} + (\Lambda + C^T + u(t) B^T)\overline{p} = \alpha_Q \Phi (\rhovec - \rhovec_Q),
+\]
+with boundary condition $\Phi \underline{p}(T) = \alpha_{\Omega}\Phi(\rhovec(T) - \rhovec_{\Omega})$.
+Notice that with $q = \Phi \underline{p}$, both adjoint equation derived from the discretised system and the discretisation of the adjoint equation from the infinite dimensional system agree.
+Moreover, the optimal control solution is also the same
+\[
+u^*(t) = (\underline{p}^T B\rhovec - \beta)/\gamma.    
+\]
+
+What remains to be seen is that we cannot use the same basis of functions for approximating $\rho$ and $p$ since they have different boundary conditions.
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                 Bibliografia                %
