@@ -6,7 +6,7 @@
 
 \usepackage{amsmath, amssymb, amsfonts, amsthm}
 \usepackage{cancel}
-\usepackage{graphicx, float}
+\usepackage{graphicx, float, xcolor}
 \usepackage{hyperref}
 \usepackage{enumerate}
 
@@ -563,12 +563,13 @@ Just as a reminder, they are calculated through the system of equations
 \]
 
 Therefore, the finite-dimension optimal control problem is given by
-\begin{align*}
+\begin{align}
+    \label{eq:finite-control-problem}
     \min_u \frac{1}{2} &\int_0^T \gamma|u(t)|^2 + 2\beta u(t) + \alpha_Q {(\rhovec(t) - \rhovec_Q(t))}^T  \Phi {(\rhovec(t) - \rhovec_Q(t))} \, dt \\ 
     &+ \alpha_{\Omega} {(\rhovec(T) - \rhovec_{\Omega})}^T  \Phi {(\rhovec(T) - \rhovec_{\Omega})}, \\
     \text{s.t. } &\dot{\rhovec}(t) = -\Phi^{-1}(\Lambda + C + u(t) B) \rhovec(t), t \in (0,T), \\
     &\rhovec(0) = \rhovec_0,
-\end{align*}
+\end{align}
 where the basis of functions are chosen to satisfy the boundary conditions.
 
 Let $q \in W^{1,\infty}([0,T]; R^{N-2})$. 
@@ -618,6 +619,80 @@ Moreover, the optimal control solution is also the same
 u^*(t) = (\underline{p}^T B\rhovec - \beta)/\gamma.    
 \]
 
+From now on we consider the problem in one dimension. 
+Let $\phi_i$ be the Legendre polynomial of degree $e$ rescaled so as to 
+\[
+\int_{\Omega} \phi^2_i(x) \, dx = 1,
+\]
+then $\Phi$ is the $N+1$ identity matrix.
+Therefore, $\phi_i = \sqrt{j + 1/2} L_i$ for each $i$, where $L_i$ is the Legendre polynomial.
+Moreover, 
+\[    
+\Lambda_{ij} = \nu \int_{\Omega} \phi_i'(x) \phi_j'(x) \, dx =  \frac{\nu}{2} \sqrt{(i+1/2)(j+1/2)}\min(i,j) (\min(i,j) + 1)\left(1 + {(-1)}^{i+j}\right).
+\]
+The matrices $B$ and $C$ are computed numerically.
+With respect of that, we solve the system for $\rhovec$, and its respective adjoint state $q$. 
+By the previous calculation, we now that $q = \underline{p}$ such that $\underline{p}$ is the coefficients of $p(x,t)$ in the Legendre basis.
+Finally, we make a change of variables to 
+\[
+\rho(x,t) = \sum_{j=0}^{N-2} \tilde{\rho}_j(t) \varphi_j(x),     
+\]
+such that $\varphi_j(x) = \phi_j(x) + \alpha_j \phi_{j+1}(x) + \beta_j \phi_{j+2}(x)$ is a polynomial that satisfies 
+\[
+\nu \nabla \varphi(\pm 1) + \varphi(\pm 1) c(\pm 1) = 0.
+\]
+Notice we could do it with the same for $p(x,t)$ with
+\[
+p(x,t) = \sum_{j=0}^{N-2} \tilde{p}_j(t) \psi_j(x), 
+\]
+such that $\psi_j(x) = \phi_j(x) + \alpha_{j,2} \phi_{j+1}(x) + \beta_{j,2} \phi_{j+2}(x)$ is a polynomial that satisfies 
+\[
+\psi'_j(\pm 1) = 0.
+\]
+
+Let us calculate the coefficients for the basis satisfy the boundary conditions.
+For each $k$, the coefficients $D_{k,k+1} = \alpha_k$ and $D_{k,k+2} = \beta_k$ are determined through
+\[
+\begin{split}
+    &\begin{bmatrix}
+        \sqrt{k + 3/2}(\nu (k+1)(k+2) - 2c_{-}) & \sqrt{k + 5/2}(-\nu (k+2)(k+3) + 2c_-) \\
+        \sqrt{k + 3/2}(\nu (k+1)(k+2) + 2c_+) & \sqrt{k + 5/2}(\nu (k+2)(k+3) + 2c_+)
+    \end{bmatrix}\begin{bmatrix}
+        \alpha_k \\ \beta_k
+    \end{bmatrix} \\
+    &= \begin{bmatrix}
+        \sqrt{k + 1/2}(\nu k(k+1) - 2c_-) \\ \sqrt{k + 1/2}(-\nu k(k+1) - 2c_+)
+    \end{bmatrix}.
+\end{split}
+\]
+
+Then $\rhovec = D^T\tilde{\rhovec}$. 
+Moreover we calculate the $E$ matrix similarly with
+\[
+\begin{split}
+    &\begin{bmatrix}
+        -\sqrt{k + 3/2}(k+1)(k+2) & \sqrt{k + 5/2}(k+2)(k+3) \\
+        \sqrt{k + 3/2}(k+1)(k+2) & \sqrt{k + 5/2}(k+2)(k+3)
+    \end{bmatrix}\begin{bmatrix}
+        \alpha_{k,2} \\ \beta_{k,2}
+    \end{bmatrix} \\
+    &= \begin{bmatrix}
+        -\sqrt{k + 1/2}k(k+1) \\ -\sqrt{k + 1/2}k(k+1)
+    \end{bmatrix}.
+\end{split}
+\]
+
+Let $G(u)$ the trajectory associated with the control $u$ and $F(G(u), u)$ for the finite dimensional optimal control problem in~\eqref{eq:finite-control-problem}.
+The Gateaux derivative of $F$ with respect to $u$ in the direction of $v$ is
+\[
+F'(u) v = \int_{0}^{T} \left(\gamma u(t) + \beta - q^T(t) \Phi^{-1} B \rhovec(t) \right) v(t) \, dt. \\
+\]
+
+Consider a partition ${\{t_i\}}_{i=0}^{m}$ for the interval $[-1,1]$. 
+Denoting the vector of values of $u$ at these points by $\underline{u} \in \R^{m+1}$, we can verify that, for every vector $v \in \R^{m+1}$,
+\[
+F'(\underline{u}) v = \frac{T}{m}\left[\sum_{i=0}^{m-1} \left(\gamma u(t_i) + \beta - q{(t_i)}^T B \rhovec(t_i) \right) \frac{v_i}{2} + \left(\gamma u(t_{i+1}) + \beta - q{(t_{i+1})}^T B \rhovec(t_{i+1}) \right) \frac{v_{i+1}}{2}\right].
+\]
 What remains to be seen is that we cannot use the same basis of functions for approximating $\rho$ and $p$ since they have different boundary conditions.
 
 
