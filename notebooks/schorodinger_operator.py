@@ -481,6 +481,35 @@ class SchrodingerControlSolver:
         p_vals = np.vstack( [p_vals_until_t0, p_vals_after_t0])
         return a_vals, p_vals
 
+    def compute_cost_functional(self, u_list, T, time_eval=None):
+        """
+        Compute the cost functional
+        J = 0.5 * ||a(T) - a_dag||^2 
+            + 0.5 * nu * int_0^T ||u(t)||^2 dt 
+            + 0.5 * kappa * int_0^T ||a(t) - a_hat||^2 dt,
+        where a(t) is obtained by solving the forward ODE with control functions u_list.
+        
+        Parameters:
+        u_list : list of callables
+            Control functions defined on [0, T].
+        T : float
+            Final time for the controlled phase.
+            
+        Returns:
+        cost : float
+            The computed cost functional.
+        """
+        if time_eval is None:
+            time_eval = np.linspace(0, T, 101)
+        a_vals = self._solve_forward(u_list, T, time_eval)
+        
+        terminal_cost = 0.5 * np.linalg.norm(a_vals[-1, :] - self.a_dag)**2
+        u_vals = np.column_stack([u(time_eval) for u in u_list])
+        control_cost = 0.5 * self.nu * np.trapz(np.sum(u_vals**2, axis=1), time_eval)
+        tracking_cost = 0.5 * self.kappa * np.trapz(np.sum((a_vals - self.a_hat)**2, axis=1), time_eval)
+        cost = terminal_cost + control_cost + tracking_cost
+        return cost
+
     def solve(self, T, t_free=0.0, max_iter=20, tol=1e-6, time_eval=None, verbose=True, 
             control_funcs=None, optimise=True,
             learning_rate_kwargs={'gamma': 1.0, 'gamma_init': 1.0, 'alpha': 0.5, 'beta': 0.8}):
