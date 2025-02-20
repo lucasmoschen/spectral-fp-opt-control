@@ -6,6 +6,7 @@ from scipy.sparse import diags
 from scipy.linalg import eigh
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
+from scipy.linalg import solve_continuous_are
 
 from abc import ABC, abstractmethod
 
@@ -408,7 +409,7 @@ class SchrodingerControlSolver:
             gamma, u_new = method(inner_prod, u_old, grad, learning_rate_kwargs)
         return u_new, grad_norm, gamma, bb_data
 
-    def _optimize_control(self, T, time_eval, control_funcs, learning_rate_kwargs, max_iter, tol, verbose):
+    def _optimize_control(self, T, time_eval, control_funcs, learning_rate_kwargs, max_iter, tol, verbose, inicialization):
         """
         Optimize the control on [0, T] using forward-backward iterations.
         Returns:
@@ -420,6 +421,9 @@ class SchrodingerControlSolver:
         # Initialize control functions on [0, T]
         if control_funcs is not None:
             u_list = control_funcs
+        elif inicialization:
+            print("WARNING - Using LQR inicialization")
+            u_list, self.u_initial = self._lrq_inicialization(T, time_eval)
         else:
             exp_decay = lambda t: np.exp(-5 * t)
             u_list = [exp_decay] * self.m
@@ -481,6 +485,52 @@ class SchrodingerControlSolver:
         p_vals = np.vstack( [p_vals_until_t0, p_vals_after_t0])
         return a_vals, p_vals
 
+    def _solve_lqr_steady(self, A, B):
+        """
+        Compute the steady-state optimal feedback control law for the LQR problem
+        without the terminal cost ||v(T)||^2.
+
+        Parameters:
+            A (ndarray): Diagonal system matrix (n x n)
+            B (ndarray): Control matrix (n x m)
+            nu (float): Control weight (> 0)
+            kappa (float): State tracking weight
+
+        Returns:
+            K (ndarray): Constant optimal feedback gain matrix (m x n)
+        """
+        Q = self.kappa * np.eye(self.num_eigen-1)
+        R = self.nu * np.eye(self.m)
+        P = solve_continuous_are(A, B, Q, R)
+        K = B.T @ P / self.nu
+        return K
+
+    def _lrq_inicialization(self, T, time_eval):
+        """
+        Compute the steady-state optimal control u*(t) = -K v(t).
+
+        Parameters:
+            v_func (function): Function v(t) returning the state at time t
+            K (ndarray): Constant feedback matrix
+
+        Returns:
+            u_func (function): Function returning u(t) at any time t
+        """
+        A = -np.diag(self.eigvals[1:])
+        B = self.Delta[:, 1:, 0].T
+        K = self._solve_lqr_steady(A, B)
+
+        sol = solve_ivp(fun=lambda t, v: A @ v + B @ (-K@v), 
+                        t_span=(0, T),
+                        y0=self.a0[1:] - self.a_dag[1:], 
+                        t_eval=time_eval,
+                        rtol=1e-7, atol=1e-9)
+        v_vals = sol.y.T
+        u_vals = (-K @ v_vals.T).T
+        u_list = [lambda t, arr=u_vals[:, i], te=time_eval: np.interp(t, te, arr, left=arr[0], right=arr[-1])
+                  for i in range(self.m)]
+        return u_list, u_vals
+
     def compute_cost_functional(self, u_list, T, time_eval=None):
         """
         Compute the cost functional
@@ -511,7 +561,7 @@ class SchrodingerControlSolver:
         return cost
 
     def solve(self, T, t_free=0.0, max_iter=20, tol=1e-6, time_eval=None, verbose=True, 
-            control_funcs=None, optimise=True,
+            control_funcs=None, optimise=True, inicialization=False,
             learning_rate_kwargs={'gamma': 1.0, 'gamma_init': 1.0, 'alpha': 0.5, 'beta': 0.8}):
         """
         Solve the control problem in two stages:
@@ -531,7 +581,8 @@ class SchrodingerControlSolver:
         time_eval_partial = time_eval[time_eval <= T]
         if optimise:
             u_list, u_discrete, a_vals, p_vals = self._optimize_control(T, time_eval_partial, control_funcs,
-                                                                        learning_rate_kwargs, max_iter, tol, verbose)
+                                                                        learning_rate_kwargs, max_iter, tol, verbose, 
+                                                                        inicialization)
         else:
             # If not optimizing, use the provided control functions (or default) on [0, T].
             if control_funcs is not None:
