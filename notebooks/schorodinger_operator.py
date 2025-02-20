@@ -206,7 +206,7 @@ class SchrodingerControlSolver:
     """
 
     def __init__(self, potential, rho_0, nu, nabla_alpha_list, approximator, num_eigen, nabla_V=None,
-                 correct_lambda0=False, rho_dag=None, kappa=0.0):
+                 correct_lambda0=False, rho_dag=None, rho_hat=None, kappa=0.0):
 
         self.approximator = approximator
         self.num_eigen = num_eigen
@@ -230,6 +230,10 @@ class SchrodingerControlSolver:
             self.rho_dag = self.rho_infty
         else:
             self.rho_dag = rho_dag
+        if rho_hat is None:
+            self.rho_hat = self.rho_infty
+        else:
+            self.rho_hat = rho_hat
             
         self.nabla_alpha_list = [nabla_alpha_i(approximator.x) for nabla_alpha_i in nabla_alpha_list]
         if nabla_V is None:
@@ -254,8 +258,14 @@ class SchrodingerControlSolver:
 
         psi_dag = self.rho_dag(self.x) / np.sqrt(self.rho_infty(self.x))
         self.a_dag = self._project_to_basis(psi_dag)
-        self.a_dag = np.zeros_like(self.a_dag)
-        self.a_dag[0] = 1.0
+
+        psi_hat = self.rho_hat(self.x) / np.sqrt(self.rho_infty(self.x))
+        self.a_hat = self._project_to_basis(psi_hat)
+
+        if rho_dag is None:
+            # Numerical correction if rho_dag is not provided.
+            self.a_dag = np.zeros_like(self.a_dag)
+            self.a_dag[0] = 1.0
 
         self.m = len(nabla_alpha_list)  # number of controls
 
@@ -326,7 +336,7 @@ class SchrodingerControlSolver:
     def _backward_ode(self, t, p_vec, u_list, T, a_t):
         # Using u(T-t) to account for time reversal.
         control_terms = [u(T - t) * Delta.T.dot(p_vec) for u, Delta in zip(u_list, self.Delta)]
-        return -self.eigvals * p_vec + np.sum(control_terms, axis=0) - self.kappa * (a_t - self.a_dag)
+        return -self.eigvals * p_vec + np.sum(control_terms, axis=0) - self.kappa * (a_t - self.a_hat)
 
     def _backtracking_line_search(self, inner_prod, u_old, grad, learning_rate_kwargs):
         """
@@ -370,12 +380,13 @@ class SchrodingerControlSolver:
         gamma, u_new = method(inner_prod, u_old, grad, learning_rate_kwargs)
         return u_new, grad_norm, gamma
 
-    def solve(self, T, max_iter=20, tol=1e-6, time_eval=None, verbose=True, control_funcs=None,
+    def solve(self, T, max_iter=20, tol=1e-6, time_eval=None, verbose=True, control_funcs=None, optimise=True,
               learning_rate_kwargs={'gamma': 1.0, 'gamma_init': 1.0, 'alpha': 0.5, 'beta': 0.8}):
         """
         Perform a forward-backward iteration to determine the optimal control functions.
-        If control_funcs is provided (a list of functions of time), they are used instead
-        of iterating for an optimal control.
+        If control_funcs is provided (a list of functions of time) with optimise=False, they are used instead
+        of iterating for an optimal control. 
+        If optimise=True, the optimal control is computed with control_funcs being the inicial guess.
         """
         if time_eval is None:
             time_eval = np.linspace(0, T, 101)
@@ -396,7 +407,7 @@ class SchrodingerControlSolver:
             lr_method = self._constant_learning_rate
         
         # Only iterate for optimal control if control_funcs is not provided.
-        if control_funcs is None:
+        if optimise:
             it = 0
             while it < max_iter:
                 a_vals = self._solve_forward(u_list, T, time_eval)  # Solve forward ODE.
