@@ -252,7 +252,6 @@ class SchrodingerControlSolver:
         A_mats = np.array([self._build_operator_matrix_A(nabla_alpha_i) for nabla_alpha_i in self.nabla_alpha_list])
         self.Delta = B_mats - A_mats
         self.Delta[:, 0, :] = 0.0
-        
 
         psi0 = self.rho_0(self.x) / np.sqrt(self.rho_infty(self.x))
         self.a0 = self._project_to_basis(psi0)
@@ -397,7 +396,7 @@ class SchrodingerControlSolver:
         Returns u_new, grad_norm, gamma.
         If using BB (i.e. method == _barzilai_borwein), bb_data is a tuple (prev_u, prev_grad).
         """
-        inner_prod = np.einsum('ni,mij,nj->nm', a_vals, self.Delta, p_vals)
+        inner_prod = np.einsum('ni,mij,nj->nm', p_vals, self.Delta, a_vals)
         grad = self.nu * u_old - inner_prod
         grad_norm = np.linalg.norm(grad)
         
@@ -471,9 +470,8 @@ class SchrodingerControlSolver:
         )
         a_vals_after_t0 = sol_fwd.y.T
 
-        a_interp = interp1d(time_eval[time_eval>t0], a_vals_after_t0, axis=0, fill_value="extrapolate", kind='linear')
         sol_bwd = solve_ivp(
-            fun=lambda t, y: -self._backward_ode(t, y, [lambda t: 0.0]*self.m, tf, a_interp(t)),
+            fun=lambda t, y: np.zeros_like(y),
             t_span=(t0, tf),
             y0=p_vals_until_t0[-1,:],
             t_eval=time_eval[time_eval > t0],
