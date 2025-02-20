@@ -5,6 +5,7 @@ import numpy as np
 from scipy.sparse import diags
 from scipy.linalg import eigh
 from scipy.integrate import solve_ivp
+from scipy.interpolate import interp1d
 
 from abc import ABC, abstractmethod
 
@@ -205,12 +206,13 @@ class SchrodingerControlSolver:
     """
 
     def __init__(self, potential, rho_0, nu, nabla_alpha_list, approximator, num_eigen, nabla_V=None,
-                 correct_lambda0=False, rho_dag=None):
+                 correct_lambda0=False, rho_dag=None, kappa=0.0):
 
         self.approximator = approximator
         self.num_eigen = num_eigen
         self.potential = potential
         self.nu = nu
+        self.kappa = kappa
         self.sigma = approximator.sigma
         self.rho_0 = rho_0
 
@@ -309,21 +311,22 @@ class SchrodingerControlSolver:
         control_terms = [u(t) * Delta.dot(a_vec) for u, Delta in zip(u_list, self.Delta)]
         return -self.eigvals * a_vec + np.sum(control_terms, axis=0)
 
-    def _solve_backward(self, u_list, T, time_eval, aT):
+    def _solve_backward(self, u_list, T, time_eval, a_vals):
         """Solve the backward ODE for the adjoint d(t) (with reversed time)."""
+        a_interp = interp1d(time_eval, a_vals, axis=0, fill_value="extrapolate", kind='linear')
         sol_bwd = solve_ivp(
-            fun=lambda t, y: self._backward_ode(t, y, u_list, T),
+            fun=lambda t, y: self._backward_ode(t, y, u_list, T, a_interp(T-t)),
             t_span=(0, T),
-            y0=self.a_dag - aT,
+            y0=self.a_dag - a_vals[-1, :],
             t_eval=(T - time_eval)[::-1],
             rtol=1e-7, atol=1e-9
         )
         return sol_bwd.y.T[::-1]  # reverse to proper time order
 
-    def _backward_ode(self, t, p_vec, u_list, T):
+    def _backward_ode(self, t, p_vec, u_list, T, a_t):
         # Using u(T-t) to account for time reversal.
         control_terms = [u(T - t) * Delta.T.dot(p_vec) for u, Delta in zip(u_list, self.Delta)]
-        return -self.eigvals * p_vec + np.sum(control_terms, axis=0)
+        return -self.eigvals * p_vec + np.sum(control_terms, axis=0) - self.kappa * (a_t - self.a_dag)
 
     def _backtracking_line_search(self, inner_prod, u_old, grad, learning_rate_kwargs):
         """
@@ -334,18 +337,21 @@ class SchrodingerControlSolver:
         inner_prod_flat = inner_prod.ravel()
         grad_flat = grad.ravel()
         # Compute objective
-        f_old = 0.5 * self.nu * np.dot(u_old_flat, u_old_flat) - np.dot(inner_prod_flat, u_old_flat)
+        f_old = self._reduced_cost_functional(u_old_flat, inner_prod_flat)
         
         gamma = learning_rate_kwargs['gamma_init']
         grad_norm_sq = np.dot(grad_flat, grad_flat)
         u_new_flat = u_old_flat - gamma * grad_flat
-        f_new = 0.5 * self.nu * np.dot(u_new_flat, u_new_flat) - np.dot(inner_prod_flat, u_new_flat)
+        f_new = self._reduced_cost_functional(u_new_flat, inner_prod_flat)
         while f_new > f_old - learning_rate_kwargs['alpha'] * gamma * grad_norm_sq:
             gamma *= learning_rate_kwargs['beta']
             u_new_flat = u_old_flat - gamma * grad_flat
-            f_new = 0.5 * self.nu * np.dot(u_new_flat, u_new_flat) - np.dot(inner_prod_flat, u_new_flat)
+            f_new = self._reduced_cost_functional(u_new_flat, inner_prod_flat)
         u_new = u_new_flat.reshape(u_old.shape)
         return gamma, u_new
+    
+    def _reduced_cost_functional(self, u, inner_prod):
+        return 0.5 * self.nu * np.dot(u, u) - np.dot(inner_prod, u)
 
     def _constant_learning_rate(self, inner_prod, u_old, grad, learning_rate_kwargs):
         u_new = u_old - learning_rate_kwargs['gamma'] * grad
@@ -377,26 +383,26 @@ class SchrodingerControlSolver:
         if control_funcs is not None:
             u_list = control_funcs
         else:
-            u_list = [lambda t: 0.0 for _ in range(self.m)]
-        
-        old_u_discrete = np.exp(-0.7 * time_eval)[:, None] * np.ones((1, self.m))
+            exp_decay = lambda t: np.exp(-5 * t)
+            u_list = [exp_decay] * self.m
+        old_u_discrete = np.column_stack([u(time_eval) for u in u_list])
 
         if 'method' in learning_rate_kwargs:
             if learning_rate_kwargs['method'] == 'constant':
-                method = self._constant_learning_rate
+                lr_method = self._constant_learning_rate
             else:
-                method = self._backtracking_line_search
+                lr_method = self._backtracking_line_search
         else:
-            method = self._constant_learning_rate
+            lr_method = self._constant_learning_rate
         
         # Only iterate for optimal control if control_funcs is not provided.
         if control_funcs is None:
             it = 0
             while it < max_iter:
                 a_vals = self._solve_forward(u_list, T, time_eval)  # Solve forward ODE.
-                p_vals = self._solve_backward(u_list, T, time_eval, a_vals[-1, :])  # Solve backward ODE.
+                p_vals = self._solve_backward(u_list, T, time_eval, a_vals)  # Solve backward ODE.
                 # Update control.
-                new_u_discrete, grad_norm, gamma = self._update_control(a_vals, p_vals, old_u_discrete, learning_rate_kwargs, method)
+                new_u_discrete, grad_norm, gamma = self._update_control(a_vals, p_vals, old_u_discrete, learning_rate_kwargs, lr_method)
                 if verbose:
                     print(f"Iteration {it+1}: ||grad|| = {grad_norm:.3e}, gamma = {gamma}")
                 if grad_norm < tol:
@@ -412,7 +418,7 @@ class SchrodingerControlSolver:
         else:
             # If user controls are provided, solve forward and backward once.
             a_vals = self._solve_forward(u_list, T, time_eval)
-            p_vals = self._solve_backward(u_list, T, time_eval, a_vals[-1, :])
+            p_vals = self._solve_backward(u_list, T, time_eval, a_vals)
             new_u_discrete = np.array([u(time_eval) for u in control_funcs]).T
         
         # Reconstruct psi(x,t) and varphi(x,t) on the spatial grid.
