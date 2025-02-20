@@ -338,6 +338,9 @@ class SchrodingerControlSolver:
         control_terms = [u(T - t) * Delta.T.dot(p_vec) for u, Delta in zip(u_list, self.Delta)]
         return -self.eigvals * p_vec + np.sum(control_terms, axis=0) - self.kappa * (a_t - self.a_hat)
 
+    def _reduced_cost_functional(self, u, inner_prod):
+        return 0.5 * self.nu * np.dot(u, u) - np.dot(inner_prod, u)
+
     def _backtracking_line_search(self, inner_prod, u_old, grad, learning_rate_kwargs):
         """
         Perform a backtracking line search using an inlined objective evaluation.
@@ -359,9 +362,6 @@ class SchrodingerControlSolver:
             f_new = self._reduced_cost_functional(u_new_flat, inner_prod_flat)
         u_new = u_new_flat.reshape(u_old.shape)
         return gamma, u_new
-    
-    def _reduced_cost_functional(self, u, inner_prod):
-        return 0.5 * self.nu * np.dot(u, u) - np.dot(inner_prod, u)
 
     def _constant_learning_rate(self, inner_prod, u_old, grad, learning_rate_kwargs):
         u_new = u_old - learning_rate_kwargs['gamma'] * grad
@@ -380,24 +380,24 @@ class SchrodingerControlSolver:
         gamma, u_new = method(inner_prod, u_old, grad, learning_rate_kwargs)
         return u_new, grad_norm, gamma
 
-    def solve(self, T, max_iter=20, tol=1e-6, time_eval=None, verbose=True, control_funcs=None, optimise=True,
-              learning_rate_kwargs={'gamma': 1.0, 'gamma_init': 1.0, 'alpha': 0.5, 'beta': 0.8}):
+    def _optimize_control(self, T, time_eval, control_funcs, learning_rate_kwargs, max_iter, tol, verbose):
         """
-        Perform a forward-backward iteration to determine the optimal control functions.
-        If control_funcs is provided (a list of functions of time) with optimise=False, they are used instead
-        of iterating for an optimal control. 
-        If optimise=True, the optimal control is computed with control_funcs being the inicial guess.
+        Optimize the control on [0, T] using forward-backward iterations.
+        Returns:
+        u_list: list of control interpolants on [0, T]
+        u_discrete: discrete control (array shape (len(time_eval), self.m))
+        a_vals: state expansion coefficients on [0, T]
+        p_vals: adjoint variables on [0, T]
         """
-        if time_eval is None:
-            time_eval = np.linspace(0, T, 101)
-        # Use user-set controls if provided; otherwise, initialize as zero.
+        # Initialize control functions on [0, T]
         if control_funcs is not None:
             u_list = control_funcs
         else:
             exp_decay = lambda t: np.exp(-5 * t)
             u_list = [exp_decay] * self.m
-        old_u_discrete = np.column_stack([u(time_eval) for u in u_list])
-
+        u_discrete = np.column_stack([u(time_eval) for u in u_list])
+        
+        # Select learning rate method.
         if 'method' in learning_rate_kwargs:
             if learning_rate_kwargs['method'] == 'constant':
                 lr_method = self._constant_learning_rate
@@ -406,41 +406,96 @@ class SchrodingerControlSolver:
         else:
             lr_method = self._constant_learning_rate
         
-        # Only iterate for optimal control if control_funcs is not provided.
-        if optimise:
-            it = 0
-            while it < max_iter:
-                a_vals = self._solve_forward(u_list, T, time_eval)  # Solve forward ODE.
-                p_vals = self._solve_backward(u_list, T, time_eval, a_vals)  # Solve backward ODE.
-                # Update control.
-                new_u_discrete, grad_norm, gamma = self._update_control(a_vals, p_vals, old_u_discrete, learning_rate_kwargs, lr_method)
-                if verbose:
-                    print(f"Iteration {it+1}: ||grad|| = {grad_norm:.3e}, gamma = {gamma}")
-                if grad_norm < tol:
-                    break
-                old_u_discrete = new_u_discrete.copy()
-                # Update u_list as piecewise linear interpolants.
-                u_list = [
-                    (lambda arr, te: lambda t: np.interp(t, te, arr, left=arr[0], right=arr[-1]))(new_u_discrete[:, i], time_eval)
-                    for i in range(self.m)
-                ]
-                it += 1
-            if it == max_iter: print("WARNING - Maximum number of iterations attained")
-        else:
-            # If user controls are provided, solve forward and backward once.
+        it = 0
+        while it < max_iter:
             a_vals = self._solve_forward(u_list, T, time_eval)
             p_vals = self._solve_backward(u_list, T, time_eval, a_vals)
-            new_u_discrete = np.array([u(time_eval) for u in control_funcs]).T
+            new_u_discrete, grad_norm, gamma = self._update_control(a_vals, p_vals, u_discrete, learning_rate_kwargs, lr_method)
+            if verbose:
+                print(f"Iteration {it+1}: ||grad|| = {grad_norm:.3e}, gamma = {gamma}")
+            if grad_norm < tol:
+                break
+            u_discrete = new_u_discrete.copy()
+            # Update control interpolants on [0, T]
+            u_list = [lambda t, arr=u_discrete[:, i], te=time_eval: np.interp(t, te, arr, left=arr[0], right=arr[-1])
+                    for i in range(self.m)]
+            it += 1
+        if it == max_iter:
+            print("WARNING - Maximum number of iterations attained")
+        return u_list, u_discrete, a_vals, p_vals
+
+    def _simulate_free_dynamics(self, t0, tf, time_eval, a_vals_until_t0, p_vals_until_t0):
+        """
+        Run the forward simulation over [0, T_total] using the control functions u_list_full.
+        """
+        sol_fwd = solve_ivp(
+            fun=lambda t, y: self._forward_ode(t, y, [lambda t: 0.0]*self.m),
+            t_span=(t0, tf),
+            y0=a_vals_until_t0[-1,:],
+            t_eval=time_eval[time_eval > t0],
+            rtol=1e-7, atol=1e-9
+        )
+        a_vals_after_t0 = sol_fwd.y.T
+
+        a_interp = interp1d(time_eval[time_eval>t0], a_vals_after_t0, axis=0, fill_value="extrapolate", kind='linear')
+        sol_bwd = solve_ivp(
+            fun=lambda t, y: -self._backward_ode(t, y, [lambda t: 0.0]*self.m, tf, a_interp(t)),
+            t_span=(t0, tf),
+            y0=p_vals_until_t0[-1,:],
+            t_eval=time_eval[time_eval > t0],
+            rtol=1e-7, atol=1e-9
+        )
+        p_vals_after_t0 = sol_bwd.y.T
+
+        a_vals = np.vstack( [a_vals_until_t0, a_vals_after_t0])
+        p_vals = np.vstack( [p_vals_until_t0, p_vals_after_t0])
+        return a_vals, p_vals
+
+    def solve(self, T, t_free=0.0, max_iter=20, tol=1e-6, time_eval=None, verbose=True, 
+            control_funcs=None, optimise=True,
+            learning_rate_kwargs={'gamma': 1.0, 'gamma_init': 1.0, 'alpha': 0.5, 'beta': 0.8}):
+        """
+        Solve the control problem in two stages:
+        1. Optimisation stage: Optimize the control on [0, T].
+        2. Free-dynamics stage: Run the free (uncontrolled) dynamics on [T, T+t_free], if t_free > 0.
+        Returns a dictionary with the following keys:
+        - time: full time grid [0, T+t_free]
+        - a_vals: state coefficients on the full time grid
+        - p_vals: adjoint coefficients on [0, T]
+        - u_vals: control values on the full time grid
+        - psi: reconstructed state on the spatial grid
+        - varphi: adjoint variables (not yet implemented)
+        """
+        T_total = T + t_free
+        if time_eval is None:
+            time_eval = np.linspace(0, T_total, 101)
+        time_eval_partial = time_eval[time_eval <= T]
+        if optimise:
+            u_list, u_discrete, a_vals, p_vals = self._optimize_control(T, time_eval_partial, control_funcs,
+                                                                        learning_rate_kwargs, max_iter, tol, verbose)
+        else:
+            # If not optimizing, use the provided control functions (or default) on [0, T].
+            if control_funcs is not None:
+                u_list = control_funcs
+            else:
+                exp_decay = lambda t: np.exp(-5 * t)
+                u_list = [exp_decay] * self.m
+            a_vals = self._solve_forward(u_list, T, time_eval_partial)
+            p_vals = self._solve_backward(u_list, T, time_eval_partial, a_vals)
+            u_discrete = np.column_stack([u(time_eval_partial) for u in u_list])
+
+        if t_free > 0:
+            u_discrete = np.vstack([u_discrete, np.zeros((time_eval[time_eval > T].shape[0], self.m))])
+            a_vals, p_vals = self._simulate_free_dynamics(T, T_total, time_eval, a_vals, p_vals)
         
-        # Reconstruct psi(x,t) and varphi(x,t) on the spatial grid.
-        psi_vals = a_vals @ self.eigfuncs.T    # shape: (len(time_eval), len(self.x))
+        psi_vals = a_vals @ self.eigfuncs.T
         varphi_vals = p_vals @ self.eigfuncs.T
         
         return {
             "time": time_eval,
             "a_vals": a_vals,
             "p_vals": p_vals,
-            "u_vals": new_u_discrete,
+            "u_vals": u_discrete,
             "psi": psi_vals,
             "varphi": varphi_vals,
         }
