@@ -367,18 +367,46 @@ class SchrodingerControlSolver:
         u_new = u_old - learning_rate_kwargs['gamma'] * grad
         return learning_rate_kwargs['gamma'], u_new
 
-    def _update_control(self, a_vals, p_vals, u_old, learning_rate_kwargs, method):
+    def _barzilai_borwein(self, u_old, grad, prev_u, prev_grad, learning_rate_kwargs):
         """
-        Compute new control array U with shape (Nt, m):
-          U[n, i] = (1/nu)*<a(t_n), (B^i - A^i) p(t_n)>
-        using vectorized operations.
+        Compute a BB step-size update.
+        prev_u and prev_grad are the previous iterate and gradient (or None if not available).
+        Returns:
+        gamma: computed step-size,
+        u_new: updated control,
+        new_prev_u, new_prev_grad: updated previous iterate and gradient (to be used in the next iteration).
+        """
+        # If no previous iterate is available, use the initial gamma.
+        if prev_u is None or prev_grad is None:
+            gamma = learning_rate_kwargs.get('gamma', 1.0)
+        else:
+            s = (u_old - prev_u).ravel()
+            y = (grad - prev_grad).ravel()
+            denominator = np.dot(y, y)
+            if np.abs(denominator) < 1e-12:
+                gamma = learning_rate_kwargs.get('gamma', 1.0)
+            else:
+                gamma = np.dot(s, y) / denominator
+        u_new = u_old - gamma * grad
+        return gamma, u_new, u_old.copy(), grad.copy()
+
+    def _update_control(self, a_vals, p_vals, u_old, learning_rate_kwargs, method, bb_data):
+        """
+        Compute new control array U with shape (Nt, m) using vectorized operations.
+        Returns u_new, grad_norm, gamma.
+        If using BB (i.e. method == _barzilai_borwein), bb_data is a tuple (prev_u, prev_grad).
         """
         inner_prod = np.einsum('ni,mij,nj->nm', a_vals, self.Delta, p_vals)
         grad = self.nu * u_old - inner_prod
         grad_norm = np.linalg.norm(grad)
-
-        gamma, u_new = method(inner_prod, u_old, grad, learning_rate_kwargs)
-        return u_new, grad_norm, gamma
+        
+        if method == self._barzilai_borwein:
+            prev_u, prev_grad = bb_data if bb_data is not None else (None, None)
+            gamma, u_new, new_prev_u, new_prev_grad = method(u_old, grad, prev_u, prev_grad, learning_rate_kwargs)
+            bb_data = (new_prev_u, new_prev_grad)
+        else:
+            gamma, u_new = method(inner_prod, u_old, grad, learning_rate_kwargs)
+        return u_new, grad_norm, gamma, bb_data
 
     def _optimize_control(self, T, time_eval, control_funcs, learning_rate_kwargs, max_iter, tol, verbose):
         """
@@ -398,19 +426,21 @@ class SchrodingerControlSolver:
         u_discrete = np.column_stack([u(time_eval) for u in u_list])
         
         # Select learning rate method.
-        if 'method' in learning_rate_kwargs:
-            if learning_rate_kwargs['method'] == 'constant':
-                lr_method = self._constant_learning_rate
-            else:
-                lr_method = self._backtracking_line_search
-        else:
+        method_choice = learning_rate_kwargs.get('method', 'constant')
+        bb_data = (None, None)
+        if method_choice == 'constant':
             lr_method = self._constant_learning_rate
+        elif method_choice == 'bb':
+            lr_method = self._barzilai_borwein
+        else:
+            lr_method = self._backtracking_line_search
         
         it = 0
         while it < max_iter:
             a_vals = self._solve_forward(u_list, T, time_eval)
             p_vals = self._solve_backward(u_list, T, time_eval, a_vals)
-            new_u_discrete, grad_norm, gamma = self._update_control(a_vals, p_vals, u_discrete, learning_rate_kwargs, lr_method)
+            new_u_discrete, grad_norm, gamma, bb_data = self._update_control(a_vals, p_vals, u_discrete,
+                                                                            learning_rate_kwargs, lr_method, bb_data)
             if verbose:
                 print(f"Iteration {it+1}: ||grad|| = {grad_norm:.3e}, gamma = {gamma}")
             if grad_norm < tol:
