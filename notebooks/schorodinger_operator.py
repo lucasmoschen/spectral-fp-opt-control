@@ -423,7 +423,7 @@ class SchrodingerControlSolver:
             u_list = control_funcs
         elif inicialization:
             print("WARNING - Using LQR inicialization")
-            u_list, self.u_initial = self._lrq_inicialization(T, time_eval)
+            u_list, self.u_initial, self.v_initial, self.K = self._lrq_inicialization(T, time_eval)
         else:
             exp_decay = lambda t: np.exp(-5 * t)
             u_list = [exp_decay] * self.m
@@ -529,7 +529,7 @@ class SchrodingerControlSolver:
         u_vals = (-K @ v_vals.T).T
         u_list = [lambda t, arr=u_vals[:, i], te=time_eval: np.interp(t, te, arr, left=arr[0], right=arr[-1])
                   for i in range(self.m)]
-        return u_list, u_vals
+        return u_list, u_vals, v_vals, K
 
     def compute_cost_functional(self, u_list, T, time_eval=None):
         """
