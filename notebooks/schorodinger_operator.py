@@ -31,8 +31,16 @@ class BaseOperatorApproximator(ABC):
         self.N = N
         self.sigma = sigma
         self.options = options if options is not None else {}
-        self.x = np.linspace(-L, L, N)
-        self.dx = self.x[1] - self.x[0]
+        if isinstance(self.L, tuple):
+            self.dim = 2
+            self.x = np.linspace(-self.L[0], self.L[0], N)
+            self.y = np.linspace(-self.L[1], self.L[1], N)
+            self.dx = self.x[1] - self.x[0]
+            self.dy = self.y[1] - self.y[0]
+        else:
+            self.dim = 1
+            self.x = np.linspace(-self.L, self.L, N)
+            self.dx = self.x[1] - self.x[0]
         if potential_func is None and potential_expr is None:
             raise ValueError("Provide at least potential_func or potential_expr.")
         self.potential_func = potential_func
@@ -44,13 +52,16 @@ class BaseOperatorApproximator(ABC):
         pass
 
 class WolframNDEigensystemApproximator(BaseOperatorApproximator):
-    def __init__(self, kernel_path='/Applications/Wolfram.app/Contents/MacOS/WolframKernel', L=10.0, N=256, sigma=1.0,
+    def __init__(self, kernel_path='/Applications/Wolfram.app/Contents/MacOS/WolframKernel',
+                 L=10.0, N=256, sigma=1.0,
                  potential_expr=None, potential_func=None, options=None):
         """
         Parameters:
           kernel_path   : path to the WolframKernel executable.
           potential_expr: a string representing W(x) in Wolfram Language.
           (potential_func is accepted for uniformity but not used here.)
+          If L is a tuple, we assume a 2d domain: x ∈ [-L[0], L[0]] and y ∈ [-L[1], L[1]].
+          Otherwise we work in 1d.
         """
         super().__init__(L=L, N=N, sigma=sigma,
                          potential_func=potential_func, potential_expr=potential_expr,
@@ -60,6 +71,12 @@ class WolframNDEigensystemApproximator(BaseOperatorApproximator):
             raise ValueError("WolframNDEigensystemApproximator requires potential_expr.")
 
     def solve_eigen(self, num_eigen=10, derivative=False):
+        if self.dim == 1:
+            return self._solve_eigen_1d(num_eigen, derivative)
+        elif self.dim == 2:
+            return self._solve_eigen_2d(num_eigen, derivative)
+
+    def _solve_eigen_1d(self, num_eigen, derivative):
         
         session = WolframLanguageSession(kernel=self.kernel_path)
         MaxCellMeasure = self.options.get("MaxCellMeasure", 0.5)
@@ -106,6 +123,50 @@ class WolframNDEigensystemApproximator(BaseOperatorApproximator):
         
         return eigenvalues, eigfunc_matrix[1:-1]
 
+    def _solve_eigen_2d(self, num_eigen, derivative):
+
+        session = WolframLanguageSession(kernel=self.kernel_path)
+        MaxCellMeasure = self.options.get("MaxCellMeasure", 0.5)
+
+        xmin, xmax = -self.L[0] - self.dx, self.L[0] + self.dx
+        ymin, ymax = -self.L[1] - self.dy, self.L[1] + self.dy
+        
+        wolfram_script = f"""
+        Module[{{eigenvalues, eigenfunctions, ptsx, ptsy, values}},
+        Clear[u];
+        ptsx = Subdivide[{xmin}, {xmax}, {self.N}+1];
+        ptsy = Subdivide[{ymin}, {ymax}, {self.N}+1];
+        {{eigenvalues, eigenfunctions}} = 
+            NDEigensystem[
+            {{
+            -{self.sigma}*(Laplacian[u[x, y],{{x, y}}]) + ({self.potential_expr})*u[x, y],
+            DirichletCondition[u[x, y] == 0, True]
+            }},
+            u[x,y],
+            {{x, {xmin}, {xmax}}}, {{y, {ymin}, {ymax}}},
+            {num_eigen},
+            Method -> {{"Eigensystem" -> "Direct",
+                        "PDEDiscretization" -> {{"FiniteElement", {{"MeshOptions" -> {{"MaxCellMeasure" -> {MaxCellMeasure}}}}}}}
+                        }}
+            ];
+        values = Table[N[eigenfunctions[[i]][x, y]], {{i, Length[eigenfunctions]}}, {{x, ptsx}}, {{y, ptsy}}];
+        {{eigenvalues, eigenfunctions, values}}
+        ]
+        """
+        result = session.evaluate(wlexpr(wolfram_script))
+        eigenvalues = np.array(result[0], dtype=float)
+        eigfunc_matrix = np.array([[[y_value.head for y_value in x_value] for x_value in eig] for eig in result[2]])
+        eigfunc_matrix = np.transpose(eigfunc_matrix, (1,2,0))
+
+        session.terminate()
+
+        if derivative:
+            grad_x = (eigfunc_matrix[2:, :, :] - eigfunc_matrix[:-2, :, :]) / (2 * self.dx)
+            grad_y = (eigfunc_matrix[:, 2:, :] - eigfunc_matrix[:, :-2, :]) / (2 * self.dy)
+            return eigenvalues, eigfunc_matrix[1:-1, 1:-1, :], (grad_x, grad_y)
+        
+        return eigenvalues, eigfunc_matrix[1:-1, 1:-1, :]
+
 class FiniteDifferenceApproximator(BaseOperatorApproximator):
     def build_operator(self):
         # This approximator relies on a callable potential.
@@ -128,57 +189,98 @@ class SchrodingerSolver:
         """
         Parameters:
           approximator: an instance of a subclass of BaseOperatorApproximator.
-          psi0: initial condition. It should be either a callable (function of x) or an array of initial values f(x,0).
+                        It should set an attribute 'dim' (1 or 2) and provide 
+                        grids (x, [y]) and grid spacings (dx, [dy]).
+          psi0: initial condition. In 1d, a function f(x) or an array; in 2d, a function f(x,y) or a 2d array.
           num_eigen: number of eigenfunctions to use in the spectral expansion.
         """
         self.approximator = approximator
-        self.x = approximator.x
-        self.dx = approximator.dx
+        # Determine dimension from the approximator.
+        if hasattr(self.approximator, "dim") and self.approximator.dim == 2:
+            self.dim = 2
+            self.x = approximator.x
+            self.y = approximator.y
+            self.dx = approximator.dx
+            self.dy = approximator.dy
+        else:
+            self.dim = 1
+            self.x = approximator.x
+            self.dx = approximator.dx
+
         self.eigvals, self.eigfuncs = self.approximator.solve_eigen(num_eigen)
         self.set_initial_condition(psi0)
 
     def set_initial_condition(self, f0):
-        if callable(f0):
-            f0_arr = f0(self.x)
-        else:
-            f0_arr = np.asarray(f0)
+        if self.dim == 1:
+            f0_arr = f0(self.x) if callable(f0) else np.asarray(f0)
             if f0_arr.shape != self.x.shape:
-                raise ValueError("The initial condition array must have the same shape as the spatial grid.")
-
+                raise ValueError("The initial condition array must have the same shape as self.x.")
+            self.a0 = np.tensordot(np.conjugate(self.eigfuncs), f0_arr, axes=([0], [0])) * self.dx
+        else:
+            if callable(f0):
+                X, Y = np.meshgrid(self.x, self.y, indexing='ij')
+                f0_arr = f0(X, Y)
+            else:
+                f0_arr = np.asarray(f0)
+                if f0_arr.shape != (len(self.x), len(self.y)):
+                    raise ValueError("The initial condition array must have shape (len(x), len(y)).")
+            self.a0 = np.tensordot(np.conjugate(self.eigfuncs), f0_arr, axes=([0, 1], [0, 1])) * self.dx * self.dy
         self.psi0 = f0_arr
-        self.a0 = np.dot(np.conjugate(self.eigfuncs).T, f0_arr) * self.dx
 
     def evolve(self, t):
         """
-        Returns the solution psi(x,t) at time t using the spectral expansion.
+        Returns the solution psi(x,t) [or psi(x,y,t) in 2d] at time t
+        using the spectral expansion.
         """
         a_t = self.a0 * np.exp(-self.eigvals * t)
-        psi_t = np.dot(self.eigfuncs, a_t)
+        if self.dim == 1:
+            psi_t = np.dot(self.eigfuncs, a_t)
+        else:
+            psi_t = np.sum(self.eigfuncs * a_t[np.newaxis, np.newaxis, :], axis=-1)
         return psi_t
 
 class FokkerPlanckSolver(SchrodingerSolver):
-    
     def __init__(self, potential, approximator, rho0, num_eigen=10):
         """
         Parameters:
-          potential: function of x V. 
-                     Notice that the appromimator should be computed accordanly using W(x) = 1/(4sigma) |V'(x)|^2 - 1/2 V''(x)
-          approximator: an instance of a subclass of BaseOperatorApproximator.
-          rho0: initial condition. It should be either a callable (function of x).
-          num_eigen: number of eigenfunctions to use in the spectral expansion.
+          potential: In 1D, a function V(x). In 2D, a function V(x,y).
+                     (The approximator must be computed with the appropriate 
+                     transformation, e.g. W = 1/(4sigma)|V'|^2 - 1/2 V'' for 1D.)
+          approximator: An instance of a subclass of BaseOperatorApproximator.
+                      It should define attributes: 
+                        - dim (1 or 2)
+                        - x (and for 2D, y)
+                        - dx (and for 2D, dy)
+          rho0: Initial condition for the density. In 1D a function of x; in 2D, a function of (x,y).
+          num_eigen: Number of eigenfunctions to use in the spectral expansion.
         """
-        eval_points = np.linspace(-10*approximator.L, 10*approximator.L, int(10000*approximator.L))
-        constant = np.trapezoid(np.exp(-potential(eval_points) / approximator.sigma), eval_points) 
-        self.rho_infinity = lambda x: np.exp(-potential(x) / approximator.sigma) / constant
-        psi0 = lambda x: rho0(x) / np.sqrt(self.rho_infinity(x))
-
+        if approximator.dim == 1:
+            eval_points = np.linspace(-10*approximator.L, 10*approximator.L, int(10000*approximator.L))
+            constant = np.trapezoid(np.exp(-potential(eval_points) / approximator.sigma), eval_points)
+            self.rho_infinity = lambda x: np.exp(-potential(x) / approximator.sigma) / constant
+            psi0 = lambda x: rho0(x) / np.sqrt(self.rho_infinity(x))
+        else:
+            X, Y = np.meshgrid(approximator.x, approximator.y, indexing='ij')
+            potential_vals = np.exp(-potential(X, Y) / approximator.sigma)
+            constant = np.sum(potential_vals) * approximator.dx * approximator.dy
+            self.rho_infinity = lambda X, Y: np.exp(-potential(X, Y) / approximator.sigma) / constant
+            psi0 = lambda x, y: rho0(x, y) / np.sqrt(self.rho_infinity(x, y))
+        
         super().__init__(approximator=approximator, psi0=psi0, num_eigen=num_eigen)
 
     def solve(self, t):
         """
-        Returns the solution rho(x,t) at time t using the spectral expansion.
+        Returns the solution rho(x,t) [or rho(x,y,t) in 2d] at time t via
+        psi(x,t) = sum_i a_i(t) e_i(x), with
+        a_i(t)=a_i(0) exp(-lambda_i t) and
+        rho(x,t) = psi(x,t)*sqrt(rho_infinity(x)).
         """
-        return self.evolve(t) * np.sqrt(self.rho_infinity(self.x))
+        psi_t = self.evolve(t)
+        if self.dim == 1:
+            return psi_t * np.sqrt(self.rho_infinity(self.x))
+        else:
+            X, Y = np.meshgrid(self.x, self.y, indexing='ij')
+            return psi_t * np.sqrt(self.rho_infinity(X, Y))
     
 class SchrodingerControlSolver:
     """
