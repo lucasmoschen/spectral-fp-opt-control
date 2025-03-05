@@ -161,8 +161,8 @@ class WolframNDEigensystemApproximator(BaseOperatorApproximator):
         session.terminate()
 
         if derivative:
-            grad_x = (eigfunc_matrix[2:, :, :] - eigfunc_matrix[:-2, :, :]) / (2 * self.dx)
-            grad_y = (eigfunc_matrix[:, 2:, :] - eigfunc_matrix[:, :-2, :]) / (2 * self.dy)
+            grad_x = (eigfunc_matrix[2:, 1:-1, :] - eigfunc_matrix[:-2, 1:-1, :]) / (2 * self.dx)
+            grad_y = (eigfunc_matrix[1:-1, 2:, :] - eigfunc_matrix[1:-1, :-2, :]) / (2 * self.dy)
             return eigenvalues, eigfunc_matrix[1:-1, 1:-1, :], (grad_x, grad_y)
         
         return eigenvalues, eigfunc_matrix[1:-1, 1:-1, :]
@@ -309,7 +309,8 @@ class SchrodingerControlSolver:
     """
 
     def __init__(self, potential, rho_0, nu, nabla_alpha_list, approximator, num_eigen, nabla_V=None,
-                 correct_lambda0=False, rho_dag=None, rho_hat=None, kappa=0.0):
+                 correct_lambda0=False, rho_dag=None, rho_hat=None, kappa=0.0, const=1.0, 
+                 eigeninfo=None):
 
         self.approximator = approximator
         self.num_eigen = num_eigen
@@ -318,56 +319,100 @@ class SchrodingerControlSolver:
         self.kappa = kappa
         self.sigma = approximator.sigma
         self.rho_0 = rho_0
+        self.dim = approximator.dim
+        self.const = const
 
-        self.x = approximator.x
-        self.dx = approximator.dx
         self.L = approximator.L
         self.N = approximator.N
-        self.eigvals, self.eigfuncs, self.nabla_eigfuncs = self.approximator.solve_eigen(num_eigen, derivative=True)
-        
-        eval_points = np.linspace(-10*approximator.L, 10*approximator.L, int(10000*approximator.L))
-        constant = np.trapezoid(np.exp(-potential(eval_points) / approximator.sigma), eval_points)
-        self.rho_infty = lambda x: np.exp(-potential(x) / approximator.sigma) / constant
 
-        if rho_dag is None:
-            self.rho_dag = self.rho_infty
+        if eigeninfo is None:
+            self.eigvals, self.eigfuncs, self.nabla_eigfuncs = self.approximator.solve_eigen(num_eigen, derivative=True)
         else:
-            self.rho_dag = rho_dag
-        if rho_hat is None:
-            self.rho_hat = self.rho_infty
+            self.eigvals, self.eigfuncs, self.nabla_eigfuncs = eigeninfo[0], eigeninfo[1], eigeninfo[2]
+
+        if self.dim == 1:
+            self.x = approximator.x
+            self.dx = approximator.dx
+
+            eval_points = np.linspace(-10 * approximator.L, 10 * approximator.L, int(10000 * approximator.L))
+            constant = np.trapezoid(np.exp(-potential(eval_points) / approximator.sigma), eval_points)
+            self.rho_infty = lambda x: np.exp(-potential(x) / approximator.sigma) / constant
         else:
-            self.rho_hat = rho_hat
+            self.x = approximator.x
+            self.y = approximator.y
+            self.dx = approximator.dx
+            self.dy = approximator.dy
+
+            X, Y = np.meshgrid(self.x, self.y, indexing='ij')
+            log_vals = -potential(X, Y) / approximator.sigma
+            max_log = np.max(log_vals)
+            potential_vals = np.exp(log_vals - max_log)
+            constant = np.sum(potential_vals) * self.dx * self.dy
+            self.rho_infty = lambda X, Y: np.exp(-potential(X, Y) / approximator.sigma - max_log) / constant
+
+        self.rho_dag = self.rho_infty if rho_dag is None else rho_dag
+        self.rho_hat = self.rho_infty if rho_hat is None else rho_hat
             
-        self.nabla_alpha_list = [nabla_alpha_i(approximator.x) for nabla_alpha_i in nabla_alpha_list]
-        if nabla_V is None:
-            nabla_V = np.gradient(potential(approximator.x), approximator.x)
+        if self.dim == 1:
+            self.nabla_alpha_list = [f(self.x) for f in nabla_alpha_list]
+            if nabla_V is None:
+                nabla_V = np.gradient(potential(self.x), self.x)
+            else:
+                nabla_V = nabla_V(self.x)
+            self.b_list = [-(nabla_alpha_i * nabla_V)/(2.0*self.sigma) for nabla_alpha_i in self.nabla_alpha_list]
+
+            if correct_lambda0:
+                self.eigvals[0] = 0.0
+                self.eigfuncs[:, 0] = np.sqrt(self.rho_infty(self.x))
+                self.nabla_eigfuncs[:, 0] = -self.eigfuncs[:, 0] * nabla_V * 0.5 / self.sigma
+
         else:
-            nabla_V = nabla_V(approximator.x)
-        self.b_list = [-(nabla_alpha_i * nabla_V)/(2.0*self.sigma) for nabla_alpha_i in self.nabla_alpha_list]
+            self.nabla_alpha_list = [f(X, Y) for f in nabla_alpha_list]
+            if nabla_V is None:
+                grad = np.gradient(potential(X, Y), self.dx, self.dy)
+                nabla_V = (grad[0], grad[1])
+            else:
+                nabla_V = nabla_V(X, Y)
+            self.b_list = [-(na[0]*nabla_V[0] + na[1]*nabla_V[1])/(2.0*self.sigma) for na in self.nabla_alpha_list]
 
-        if correct_lambda0:
-            self.eigvals[0] = 0.0
-            self.eigfuncs[:,0] = np.sqrt(self.rho_infty(self.x))
-            self.nabla_eigfuncs[:,0] = -self.eigfuncs[:,0] * nabla_V * 0.5 * self.sigma
-
+            if correct_lambda0:
+                ground = np.sqrt(self.rho_infty(X, Y))
+                self.eigvals[0] = 0.0
+                self.eigfuncs[:, :, 0] = ground
+                self.nabla_eigfuncs[0][:, :, 0] = -ground * (nabla_V[0] * 0.5 / self.sigma)
+                self.nabla_eigfuncs[1][:, :, 0] = -ground * (nabla_V[1] * 0.5 / self.sigma)
+        
         B_mats = np.array([self._build_operator_matrix_B(b_i) for b_i in self.b_list])
         A_mats = np.array([self._build_operator_matrix_A(nabla_alpha_i) for nabla_alpha_i in self.nabla_alpha_list])
         self.Delta = B_mats - A_mats
-        self.Delta[:, 0, :] = 0.0
+        #self.Delta[:, 0, :] = 0.0
 
-        psi0 = self.rho_0(self.x) / np.sqrt(self.rho_infty(self.x))
-        self.a0 = self._project_to_basis(psi0)
+        if self.dim == 1:
+            psi0 = self.rho_0(self.x) / np.sqrt(self.rho_infty(self.x))
+            self.a0 = self._project_to_basis(psi0)
 
-        psi_dag = self.rho_dag(self.x) / np.sqrt(self.rho_infty(self.x))
-        self.a_dag = self._project_to_basis(psi_dag)
+            psi_dag = self.rho_dag(self.x) / np.sqrt(self.rho_infty(self.x))
+            self.a_dag = self._project_to_basis(psi_dag)
 
-        psi_hat = self.rho_hat(self.x) / np.sqrt(self.rho_infty(self.x))
-        self.a_hat = self._project_to_basis(psi_hat)
+            psi_hat = self.rho_hat(self.x) / np.sqrt(self.rho_infty(self.x))
+            self.a_hat = self._project_to_basis(psi_hat)
+        else:
+            psi0 = self.rho_0(X, Y) / np.sqrt(self.rho_infty(X, Y))
+            self.a0 = self._project_to_basis(psi0)
+
+            psi_dag = self.rho_dag(X, Y) / np.sqrt(self.rho_infty(X, Y))
+            self.a_dag = self._project_to_basis(psi_dag)
+
+            psi_hat = self.rho_hat(X, Y) / np.sqrt(self.rho_infty(X, Y))
+            self.a_hat = self._project_to_basis(psi_hat)
 
         if rho_dag is None:
             # Numerical correction if rho_dag is not provided.
             self.a_dag = np.zeros_like(self.a_dag)
             self.a_dag[0] = 1.0
+        if rho_hat is None:
+            self.a_hat = np.zeros_like(self.a_hat)
+            self.a_hat[0] = 1.0
 
         self.m = len(nabla_alpha_list)  # number of controls
 
@@ -377,35 +422,81 @@ class SchrodingerControlSolver:
             a_k = ∫ f(x) * varphi_k(x) dx,
         approximated using the trapezoidal rule.
         """
-        a = np.trapezoid(fvals[:, None] * self.eigfuncs, x=self.x, axis=0)
+        if self.dim == 1:
+            a = np.tensordot(np.conjugate(self.eigfuncs), fvals, axes=([0], [0])) * self.dx
+        else:
+            a = np.tensordot(np.conjugate(self.eigfuncs), fvals, axes=([0, 1], [0, 1])) * self.dx * self.dy
         return a
 
-    def _build_operator_matrix_A(self, alpha_vals):
+    def _build_operator_matrix_A(self, nabla_alpha):
         """
-        Build the matrix A of shape (num_eigen, num_eigen) such that
+        For 1D:
         A_{j,k} = ∫ alpha'(x)*varphi_j'(x)*varphi_k(x) dx,
-        approximated using the trapezoidal rule on the grid self.x.
+        (same as before).
+        
+        For 2D:
+        A_{j,k} = ∫ [∇α(x,y) · ∇e_j(x,y)] e_k(x,y) dx dy,
+        approximated via the trapezoidal rule.
         """
-        weights = np.empty_like(alpha_vals)
-        weights[0] = (self.x[1] - self.x[0]) / 2.0
-        weights[-1] = (self.x[-1] - self.x[-2]) / 2.0
-        weights[1:-1] = (self.x[2:] - self.x[:-2]) / 2.0
-        weights *= alpha_vals
-        Amat = (self.nabla_eigfuncs.T * weights) @ self.eigfuncs
+        if self.dim == 1:
+            weights = np.empty_like(nabla_alpha)
+            weights[0] = (self.x[1] - self.x[0]) / 2.0
+            weights[-1] = (self.x[-1] - self.x[-2]) / 2.0
+            weights[1:-1] = (self.x[2:] - self.x[:-2]) / 2.0
+            weights *= nabla_alpha
+            Amat = (self.nabla_eigfuncs.T * weights) @ self.eigfuncs
+            # Checking boundary conditions (should be close to 0)
+            A_left = np.outer(self.eigfuncs[0, :], self.eigfuncs[0, :]) * nabla_alpha[0]
+            A_right = np.outer(self.eigfuncs[-1, :], self.eigfuncs[-1, :]) * nabla_alpha[-1]
+
+            Amat += A_left - A_right
+        else:            
+            wx = np.empty_like(self.x)
+            wx[0] = (self.x[1] - self.x[0]) / 2.0
+            wx[-1] = (self.x[-1] - self.x[-2]) / 2.0
+            wx[1:-1] = (self.x[2:] - self.x[:-2]) / 2.0
+            wy = np.empty_like(self.y)
+            wy[0] = (self.y[1] - self.y[0]) / 2.0
+            wy[-1] = (self.y[-1] - self.y[-2]) / 2.0
+            wy[1:-1] = (self.y[2:] - self.y[:-2]) / 2.0
+            weights = np.outer(wx, wy)
+            temp = np.einsum('ij,ijm->ijm', nabla_alpha[0], self.nabla_eigfuncs[0]) + np.einsum('ij,ijm->ijm', nabla_alpha[1], self.nabla_eigfuncs[1])
+            Amat = np.tensordot(temp, weights[..., np.newaxis] * self.eigfuncs, axes=([0, 1], [0, 1]))
+
+            # I should implement the boundary terms here
+
         return Amat
 
     def _build_operator_matrix_B(self, bvals):
         """
-        Build the matrix B of shape (num_eigen, num_eigen) for the multiplication operator b(x),
-        i.e., B_{j,k} = ∫ b(x)*varphi_j(x)*varphi_k(x) dx,
-        approximated using the trapezoidal rule on the grid self.x.
+        For 1D:
+        B_{j,k} = ∫ b(x)*varphi_j(x)*varphi_k(x) dx,
+        as before.
+        
+        For 2D:
+        B_{j,k} = ∫ b(x,y)*e_j(x,y)*e_k(x,y) dx dy,
+        approximated using the trapezoidal rule.
+        
+        Here bvals is an array of shape (N, N).
         """
-        weights = np.empty_like(bvals)
-        weights[0] = (self.x[1] - self.x[0]) / 2.0
-        weights[-1] = (self.x[-1] - self.x[-2]) / 2.0
-        weights[1:-1] = (self.x[2:] - self.x[:-2]) / 2.0
-        weights *= bvals
-        Bmat = (self.eigfuncs.T * weights) @ self.eigfuncs
+        if self.dim == 1:
+            weights = np.empty_like(bvals)
+            weights[0] = (self.x[1] - self.x[0]) / 2.0
+            weights[-1] = (self.x[-1] - self.x[-2]) / 2.0
+            weights[1:-1] = (self.x[2:] - self.x[:-2]) / 2.0
+            weights *= bvals
+            Bmat = (self.eigfuncs.T * weights) @ self.eigfuncs
+        else:
+            wx = np.empty_like(self.x)
+            wx[0] = (self.x[1] - self.x[0]) / 2.0
+            wx[-1] = (self.x[-1] - self.x[-2]) / 2.0
+            wx[1:-1] = (self.x[2:] - self.x[:-2]) / 2.0
+            wy = np.empty_like(self.y)
+            wy[0] = (self.y[1] - self.y[0]) / 2.0
+            wy[-1] = (self.y[-1] - self.y[-2]) / 2.0
+            wy[1:-1] = (self.y[2:] - self.y[:-2]) / 2.0
+            weights = np.outer(wx, wy) * bvals
+            Bmat = np.einsum('ij,ijk,ijl->kl', weights, self.eigfuncs, self.eigfuncs)
         return Bmat
 
     def _solve_forward(self, u_list, T, time_eval):
@@ -429,7 +520,7 @@ class SchrodingerControlSolver:
         sol_bwd = solve_ivp(
             fun=lambda t, y: self._backward_ode(t, y, u_list, T, a_interp(T-t)),
             t_span=(0, T),
-            y0=self.a_dag - a_vals[-1, :],
+            y0=self.const*(self.a_dag - a_vals[-1, :]),
             t_eval=(T - time_eval)[::-1],
             rtol=1e-7, atol=1e-9
         )
@@ -547,13 +638,14 @@ class SchrodingerControlSolver:
             new_u_discrete, grad_norm, gamma, bb_data = self._update_control(a_vals, p_vals, u_discrete,
                                                                             learning_rate_kwargs, lr_method, bb_data)
             if verbose:
-                print(f"Iteration {it+1}: ||grad|| = {grad_norm:.3e}, gamma = {gamma}")
-            if grad_norm < tol:
+                print(f"Iteration {it+1}: ||grad|| = {np.sqrt(T / len(time_eval)) * grad_norm:.3e}, gamma = {gamma}")
+            if np.sqrt(T / len(time_eval)) * grad_norm < tol:
                 break
             u_discrete = new_u_discrete.copy()
             # Update control interpolants on [0, T]
             u_list = [lambda t, arr=u_discrete[:, i], te=time_eval: np.interp(t, te, arr, left=arr[0], right=arr[-1])
                     for i in range(self.m)]
+            self.cost_values.append(self.compute_cost_functional(u_list, T, time_eval))
             it += 1
         if it == max_iter:
             print("WARNING - Maximum number of iterations attained")
@@ -599,7 +691,8 @@ class SchrodingerControlSolver:
         Returns:
             K (ndarray): Constant optimal feedback gain matrix (m x n)
         """
-        Q = self.kappa * np.eye(self.num_eigen-1)
+        new_kappa = 1 if self.kappa == 0.0 else self.kappa
+        Q = new_kappa * np.eye(self.num_eigen-1)
         R = self.nu * np.eye(self.m)
         P = solve_continuous_are(A, B, Q, R)
         K = B.T @ P / self.nu
@@ -653,11 +746,12 @@ class SchrodingerControlSolver:
             time_eval = np.linspace(0, T, 101)
         a_vals = self._solve_forward(u_list, T, time_eval)
         
-        terminal_cost = 0.5 * np.linalg.norm(a_vals[-1, :] - self.a_dag)**2
+        terminal_cost = 0.5 * self.const * np.linalg.norm(a_vals[-1, :] - self.a_dag)**2
         u_vals = np.column_stack([u(time_eval) for u in u_list])
-        control_cost = 0.5 * self.nu * np.trapz(np.sum(u_vals**2, axis=1), time_eval)
-        tracking_cost = 0.5 * self.kappa * np.trapz(np.sum((a_vals - self.a_hat)**2, axis=1), time_eval)
-        cost = terminal_cost + control_cost + tracking_cost
+        control_cost = 0.5 * self.nu * np.trapezoid(np.sum(u_vals**2, axis=1), time_eval)
+        tracking_cost = 0.5 * self.kappa * np.trapezoid(np.sum((a_vals - self.a_hat)**2, axis=1), time_eval)
+        #cost = terminal_cost + control_cost + tracking_cost
+        cost = [terminal_cost, control_cost, tracking_cost]
         return cost
 
     def solve(self, T, t_free=0.0, max_iter=20, tol=1e-6, time_eval=None, verbose=True, 
@@ -680,6 +774,7 @@ class SchrodingerControlSolver:
             time_eval = np.linspace(0, T_total, 101)
         time_eval_partial = time_eval[time_eval <= T]
         if optimise:
+            self.cost_values = []
             u_list, u_discrete, a_vals, p_vals = self._optimize_control(T, time_eval_partial, control_funcs,
                                                                         learning_rate_kwargs, max_iter, tol, verbose, 
                                                                         inicialization)
@@ -697,9 +792,13 @@ class SchrodingerControlSolver:
         if t_free > 0:
             u_discrete = np.vstack([u_discrete, np.zeros((time_eval[time_eval > T].shape[0], self.m))])
             a_vals, p_vals = self._simulate_free_dynamics(T, T_total, time_eval, a_vals, p_vals)
-        
-        psi_vals = a_vals @ self.eigfuncs.T
-        varphi_vals = p_vals @ self.eigfuncs.T
+
+        if self.dim == 1:
+            psi_vals = a_vals @ self.eigfuncs.T
+            varphi_vals = p_vals @ self.eigfuncs.T
+        else:
+            psi_vals = np.tensordot(a_vals, self.eigfuncs, axes=([1], [2]))
+            varphi_vals = np.tensordot(p_vals, self.eigfuncs, axes=([1], [2]))
         
         return {
             "time": time_eval,
