@@ -33,8 +33,8 @@ class BaseOperatorApproximator(ABC):
         self.options = options if options is not None else {}
         if isinstance(self.L, tuple):
             self.dim = 2
-            self.x = np.linspace(-self.L[0], self.L[0], N)
-            self.y = np.linspace(-self.L[1], self.L[1], N)
+            self.x = np.linspace(-self.L[0], self.L[0], N[0])
+            self.y = np.linspace(-self.L[1], self.L[1], N[1])
             self.dx = self.x[1] - self.x[0]
             self.dy = self.y[1] - self.y[0]
         else:
@@ -134,8 +134,8 @@ class WolframNDEigensystemApproximator(BaseOperatorApproximator):
         wolfram_script = f"""
         Module[{{eigenvalues, eigenfunctions, ptsx, ptsy, values}},
         Clear[u];
-        ptsx = Subdivide[{xmin}, {xmax}, {self.N}+1];
-        ptsy = Subdivide[{ymin}, {ymax}, {self.N}+1];
+        ptsx = Subdivide[{xmin}, {xmax}, {self.N[0]}+1];
+        ptsy = Subdivide[{ymin}, {ymax}, {self.N[1]}+1];
         {{eigenvalues, eigenfunctions}} = 
             NDEigensystem[
             {{
@@ -173,8 +173,8 @@ class FiniteDifferenceApproximator(BaseOperatorApproximator):
         if self.potential_func is None:
             raise ValueError("FiniteDifferenceApproximator requires potential_func.")
         W = self.potential_func(self.x)
-        main_diag = -2.0 * np.ones(self.N) / self.dx**2
-        off_diag = np.ones(self.N - 1) / self.dx**2
+        main_diag = -2.0 * np.ones(self) / self.dx**2
+        off_diag = np.ones(self - 1) / self.dx**2
         laplacian = diags([off_diag, main_diag, off_diag], offsets=[-1, 0, 1]).toarray()
         H = -self.sigma * laplacian + np.diag(W)
         return H
@@ -308,9 +308,9 @@ class SchrodingerControlSolver:
       state, adjoint, and controls over time.
     """
 
-    def __init__(self, potential, rho_0, nu, nabla_alpha_list, approximator, num_eigen, nabla_V=None,
+    def __init__(self, potential, rho_0, nu, approximator, num_eigen, nabla_V=None,
                  correct_lambda0=False, rho_dag=None, rho_hat=None, kappa=0.0, const=1.0, 
-                 eigeninfo=None):
+                 eigeninfo=None, nabla_alpha_list=None, compute_alpha=0):
 
         self.approximator = approximator
         self.num_eigen = num_eigen
@@ -354,7 +354,10 @@ class SchrodingerControlSolver:
         self.rho_hat = self.rho_infty if rho_hat is None else rho_hat
             
         if self.dim == 1:
-            self.nabla_alpha_list = [f(self.x) for f in nabla_alpha_list]
+            if nabla_alpha_list is not None:
+                self.nabla_alpha_list = [f(self.x) for f in nabla_alpha_list]
+            else:
+                self.nabla_alpha_list = [self._solver_alpha(self.eigfuncs[:, i]) for i in range(1, compute_alpha+1)]
             if nabla_V is None:
                 nabla_V = np.gradient(potential(self.x), self.x)
             else:
@@ -367,7 +370,10 @@ class SchrodingerControlSolver:
                 self.nabla_eigfuncs[:, 0] = -self.eigfuncs[:, 0] * nabla_V * 0.5 / self.sigma
 
         else:
-            self.nabla_alpha_list = [f(X, Y) for f in nabla_alpha_list]
+            if nabla_alpha_list is not None:
+                self.nabla_alpha_list = [f(X, Y) for f in nabla_alpha_list]
+            else:
+                self.nabla_alpha_list = [self._solver_alpha(self.eigfuncs[:, :, i]) for i in range(1, compute_alpha+1)]
             if nabla_V is None:
                 grad = np.gradient(potential(X, Y), self.dx, self.dy)
                 nabla_V = (grad[0], grad[1])
@@ -414,7 +420,39 @@ class SchrodingerControlSolver:
             self.a_hat = np.zeros_like(self.a_hat)
             self.a_hat[0] = 1.0
 
-        self.m = len(nabla_alpha_list)  # number of controls
+        if nabla_alpha_list is not None:
+            self.m = len(nabla_alpha_list)  # number of controls
+        else:
+            self.m = compute_alpha
+
+    def _solver_alpha(self, eigfunc):
+        """
+        Solve the equation N(e_0) = eigfunc for alpha, where N(phi) = ∇ · (e_0 phi ∇α) / e_0 for alpha.
+        It uses spectral elements for alpha.
+        """        
+        e0_sq = self.eigfuncs[:, 0]**2 if self.dim == 1 else self.eigfuncs[:, :, 0]**2
+        e0eigfunc = self.eigfuncs[:, 0] * eigfunc if self.dim == 1 else self.eigfuncs[:, :, 0] * eigfunc
+
+        if self.dim == 1:
+            matrix = np.einsum('i,ik,ij->kj', e0_sq, self.nabla_eigfuncs, self.nabla_eigfuncs) #* self.dx
+            image = -np.einsum('i,ij->j', e0eigfunc, self.eigfuncs) #* self.dx
+        else:
+            matrix = np.einsum('ij,ijk,ijl->kl', e0_sq, self.nabla_eigfuncs[0], self.nabla_eigfuncs[0])
+            matrix += np.einsum('ij,ijk,ijl->kl', e0_sq, self.nabla_eigfuncs[1], self.nabla_eigfuncs[1])
+            #matrix *= self.dx * self.dy
+            image = -np.einsum('ij,ijk->k', e0eigfunc, self.eigfuncs) #* self.dx * self.dy
+
+        c = np.linalg.solve(matrix, image)
+
+        if self.dim == 1:
+            nabla_alpha = np.einsum('k,ik->i', c, self.nabla_eigfuncs)
+        else:
+            nabla_alpha_x = np.einsum('k,ijk->ij', c, self.nabla_eigfuncs[0])
+            nabla_alpha_y = np.einsum('k,ijk->ij', c, self.nabla_eigfuncs[1])
+
+            return (nabla_alpha_x, nabla_alpha_y)
+
+        return nabla_alpha
 
     def _project_to_basis(self, fvals):
         """
