@@ -7,6 +7,8 @@ from scipy.linalg import eigh
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 from scipy.linalg import solve_continuous_are
+from scipy.special import eval_hermite
+from math import factorial
 
 from abc import ABC, abstractmethod
 
@@ -184,6 +186,103 @@ class FiniteDifferenceApproximator(BaseOperatorApproximator):
         eigvals, eigvecs = eigh(H)
         return eigvals[:num_eigen], eigvecs[:, :num_eigen]
 
+class AnalyticSchrodingerApproximator(BaseOperatorApproximator):
+    def __init__(self, L=10.0, N=256, sigma=1.0, a=1.0, b=None, options=None):
+        """
+        Parameters:
+          L    : half-length of the domain (or tuple for 2d).
+          N    : number of grid points (or tuple for 2d).
+          sigma: parameter in H = -sigma * Δ + W.
+          a    : parameter in the 1d potential W(x)=0.25*a^2*x^2 - 0.5*a.
+          b    : parameter for y in 2d potential W(x,y)=0.25*(a^2*x^2+b^2*y^2)-0.5*(a+b).
+                 For 1d, b is ignored; for 2d if b is None, we take b=a.
+          options: additional options.
+        """
+        # We pass a dummy potential since we solve analytically.
+        super().__init__(L=L, N=N, sigma=sigma, potential_func=lambda x: None, potential_expr="Analytic", options=options)
+        self.a = a
+        if self.dim == 2:
+            self.b = b if b is not None else a
+
+    def solve_eigen(self, num_eigen=10, derivative=False):
+        if self.dim == 1:
+            return self._solve_eigen_1d(num_eigen, derivative)
+        elif self.dim == 2:
+            return self._solve_eigen_2d(num_eigen, derivative)
+        
+    def _get_eigenpair_1d(self, n, sigma, kappa):
+        """
+        Compute the eigenpair (eigenvalue, eigenfunction) for the 1d harmonic oscillator
+        H = -sigma * d^2/dx^2 + 0.5*kappa*x^2.
+        """
+        m_omega_h = np.sqrt(kappa / (2.0 * sigma))
+        normalising_constant = (m_omega_h / np.pi)**0.25 / np.sqrt(2**n * factorial(n))
+        eigenfuncion = lambda x: normalising_constant * eval_hermite(n, np.sqrt(m_omega_h) * x) * np.exp(-0.5 * m_omega_h * x**2)
+        eigenvalue = 0.5 * np.sqrt(2*sigma*kappa) * (2*n + 1)
+        return m_omega_h, eigenvalue, eigenfuncion
+
+    def _solve_eigen_1d(self, num_eigen, derivative):
+
+        eigenvalues = np.empty(num_eigen, dtype=np.float64)
+        eigfunc_matrix = np.empty((len(self.x), num_eigen), dtype=np.float64)
+        
+        for n in range(num_eigen):
+            m_omega_h, eigenvalues[n], eigfunc = self._get_eigenpair_1d(n, self.sigma, 0.5 * self.a**2 / self.sigma)
+            eigfunc_matrix[:, n] = eigfunc(self.x)
+            eigenvalues[n] -= 0.5*self.a
+        
+        if derivative:
+            eigfunc_diffs = -eigfunc_matrix * self.x * m_omega_h
+            eigfunc_diffs[:, 1:] += eigfunc_matrix[:, :-1] * np.sqrt(m_omega_h * 2 * np.arange(1, num_eigen))
+            return eigenvalues, eigfunc_matrix, eigfunc_diffs
+        return eigenvalues, eigfunc_matrix
+
+    def _solve_eigen_2d(self, num_eigen, derivative):
+
+        eigenvalues = np.empty(num_eigen, dtype=np.float64)
+        eigfunc_matrix = np.empty((len(self.x), len(self.y), num_eigen), dtype=np.float64)
+        # We have k+1 eigenfunctions with eigenvalue k.
+        # Then 1 + ... + max_sum = num_eigen -> (max_sum + 1)max_sum = 2num_eigen
+        max_sum = int(np.ceil(np.sqrt(0.25 + 2*num_eigen) - 0.5))
+
+        eig_x, eig_y = {}, {}
+        for n in range(max_sum):
+            m_omega_x, ev_x, psi_x = self._get_eigenpair_1d(n, self.sigma, 0.5 * self.a**2 / self.sigma)
+            ev_x -= 0.5 * self.a
+            eig_x[n] = (ev_x, psi_x)
+            m_omega_y, ev_y, psi_y = self._get_eigenpair_1d(n, self.sigma, 0.5 * self.b**2 / self.sigma)
+            ev_y -= 0.5 * self.b
+            eig_y[n] = (ev_y, psi_y)
+        
+        pairs = [((n, j-n), eig_x[n][0] + eig_y[j-n][0]) for j in range(max_sum) for n in range(j+1)]
+        pairs.sort(key=lambda p: (p[1], p[0][0] + p[0][1], abs(p[0][0] - p[0][1])))
+        selected_pairs = pairs[:num_eigen]
+
+        if derivative:
+            grad_x = np.empty_like(eigfunc_matrix)
+            grad_y = np.empty_like(eigfunc_matrix)  
+
+        for i, ((n, m), E) in enumerate(selected_pairs):
+            eigenvalues[i] = E
+            psi_x_vals = eig_x[n][1](self.x)
+            psi_y_vals = eig_y[m][1](self.y)
+            eigfunc_matrix[:, :, i] = np.outer(psi_x_vals, psi_y_vals)
+            if derivative:
+                dpsi_x_vals = -self.x * m_omega_x * psi_x_vals
+                if n >= 1:
+                    dpsi_x_vals += psi_x_vals_old * np.sqrt(m_omega_x * 2 * n)
+                dpsi_y_vals = -self.y * m_omega_y * psi_y_vals
+                if m >= 1:
+                    dpsi_y_vals += psi_y_vals_old * np.sqrt(m_omega_y * 2 * m)
+                grad_x[:, :, i] = np.outer(dpsi_x_vals, psi_y_vals)
+                grad_y[:, :, i] = np.outer(psi_x_vals, dpsi_y_vals)
+                psi_x_vals_old = psi_x_vals.copy()
+                psi_y_vals_old = psi_y_vals.copy()
+        
+        if derivative:
+            return eigenvalues, eigfunc_matrix, (grad_x, grad_y)
+        return eigenvalues, eigfunc_matrix
+        
 class SchrodingerSolver:
     def __init__(self, approximator, psi0, num_eigen=10):
         """
@@ -281,7 +380,7 @@ class FokkerPlanckSolver(SchrodingerSolver):
         else:
             X, Y = np.meshgrid(self.x, self.y, indexing='ij')
             return psi_t * np.sqrt(self.rho_infinity(X, Y))
-    
+   
 class SchrodingerControlSolver:
     """
     Solve the optimal control problem for
