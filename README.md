@@ -1,37 +1,99 @@
-# Spectral Optimal Control of Fokker–Planck Equations
 
-This repository contains code and supplementary materials related to our research on a spectral optimal control framework for Fokker–Planck equations via a ground state transformation. The approach transforms the Fokker–Planck operator into a Schrödinger operator, enabling effective control strategies to target slow-decaying modes and improve convergence.
+# A Spectral Approach to Optimal Control of the Fokker–Planck Equation
+
+This repository accompanies the paper:
+
+**A Spectral Approach to Optimal Control of the Fokker–Planck Equation**  
+by Dante Kalise, Lucas M. Moschen, Grigorios A. Pavliotis, and Urbain Vaes  
+Accepted in *IEEE Control Systems Letters (L-CSS)*, 2025.  
+DOI to appear upon final publication.
+
+The ArXiV version is located [https://arxiv.org/abs/2503.15125](https://arxiv.org/abs/2503.15125).
+
+---
+
+## Overview
+
+This code implements a spectral method for the optimal control of the Fokker–Planck equation based on a Schrödinger operator formulation. 
+The framework supports:
+- Eigenfunction-based discretization in 1D and 2D
+- Analytic, finite-difference, and PDE-based solvers
+- Forward–backward optimal control via reduced-order modeling
+- Visualization and benchmark scripts for controlled convergence
+
+---
 
 ## Repository Structure
 
-```
+```text
 .
-├── codes_notebooks
-│   ├── fp-solver.py                   # Solver for Fokker–Planck equation on bounded domains using Legendre polynomials
-│   ├── schrodinger_operator.py        # Schrödinger optimal control solver for the real line and plane
-│   ├── optimal_control_problem.ipynb  # Notebook: Optimal control plots and studies (1D & 2D)
-│   └── schrodinger_operator.ipynb       # Notebook: Detailed study of the Schrödinger operator
-├── images                           # Figures and plots from the experiments
-└── notes                            # Research notes, derivations, and additional documentation
+├── schrodinger_operator.py        # Main class-based solver library
+├── example_control.py             # Script: example run with 1–4 control fields
+├── main_examples.ipynb            # Reproduces the main results from the paper
+├── explore_schrodinger_operators.ipynb  # Experimental notebook for spectral operators
+├── experimental_fp_solver.py      # Prototype for Fokker–Planck dynamics (unused)
+├── experimental_LQ_solver.py      # Experimental LQR control script
+├── requirements.txt               # Python dependencies
+├── README.md                      # Project documentation
 ```
 
-## Getting Started
+---
 
-1. **Environment Setup:**  
-   Ensure you have Python 3 installed along with necessary packages (e.g., NumPy, SciPy, matplotlib, Jupyter). 
-   Consider installing the libraries through `enviroment.yml` file.
+## Setup
 
-2. **Running the Code:**  
-   - **Bounded Domain Solver:** Run `fp-solver.py` to solve the Fokker-Planck equation on a bounded domain.
-   - **Schrodinger Operator Solver:** Run `schrodinger_operator.py` for the optimal control solver on unbounded domains (real line and plane).
+Install the required dependencies with:
 
-3. **Exploring Notebooks:**  
-   Launch Jupyter Notebook in the `codes_notebooks` folder and open:
-   - `optimal_control_problem.ipynb` for optimal control experiments.
-   - `schrodinger_operator.ipynb` for an in-depth study of the operator.
+```bash
+pip install -r requirements.txt
+```
 
-## About
+To run notebooks, you may also use:
 
-This project implements a spectral optimal control framework for Fokker–Planck equations, emphasizing control strategies that accelerate convergence toward the steady state. The transformation to a Schrödinger operator enables efficient eigenfunction-based methods.
+```bash
+jupyter notebook
+```
 
-If you have any questions or feedback, feel free to open an issue or contact the corresponding author.
+**Note:** Some solvers require access to [Wolfram Engine](https://www.wolfram.com/engine/) via the `wolframclient` Python interface.
+
+---
+
+## How to Run
+
+To reproduce the key control results (Figure 1 in the paper):
+
+```bash
+python example_control.py
+```
+
+This generates a plot of the $L^2$ distance between the evolving state and target, under 0 to 4 control terms.
+
+To explore the examples used in the paper:
+
+```bash
+jupyter notebook main_examples.ipynb
+```
+
+---
+
+## Citation
+
+If this code contributes to your research, please cite:
+
+```bibtex
+@article{kalise2025spectralfp,
+  title     = {A Spectral Approach to Optimal Control of the Fokker--Planck Equation},
+  author    = {Kalise, Dante and Moschen, Lucas M. and Pavliotis, Grigorios A. and Vaes, Urbain},
+  journal   = {IEEE Control Systems Letters},
+  year      = {2025},
+  note      = {Accepted, DOI to appear}
+}
+```
+
+---
+
+## Notes
+
+- `experimental_fp_solver.py` and `experimental_LQ_solver.py` are prototypes not used in the final results.
+- `explore_schrodinger_operators.ipynb` is an exploratory notebook for testing spectral properties and interfaces.
+- All computational routines are written in Python using NumPy, SciPy, and optionally Wolfram Language for PDE-based solvers.
+

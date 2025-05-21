@@ -454,9 +454,12 @@ class SchrodingerControlSolver:
             
         if self.dim == 1:
             if nabla_alpha_list is not None:
-                self.nabla_alpha_list = [f(self.x) for f in nabla_alpha_list]
+                if callable(nabla_alpha_list[0]):
+                    self.nabla_alpha_list = [f(self.x) for f in nabla_alpha_list]
+                else:
+                    self.nabla_alpha_list = [f for f in nabla_alpha_list]
             else:
-                self.nabla_alpha_list = [self._solver_alpha(self.eigfuncs[:, i]) for i in range(1, compute_alpha+1)]
+                self.nabla_alpha_list = [self._solver_alpha(self.eigfuncs[:, i])[0] for i in range(1, compute_alpha+1)]
             if nabla_V is None:
                 nabla_V = np.gradient(potential(self.x), self.x)
             else:
@@ -470,9 +473,12 @@ class SchrodingerControlSolver:
 
         else:
             if nabla_alpha_list is not None:
-                self.nabla_alpha_list = [f(X, Y) for f in nabla_alpha_list]
+                if callable(nabla_alpha_list[0]):
+                    self.nabla_alpha_list = [f(X, Y) for f in nabla_alpha_list]
+                else:
+                    self.nabla_alpha_list = [f for f in nabla_alpha_list]
             else:
-                self.nabla_alpha_list = [self._solver_alpha(self.eigfuncs[:, :, i]) for i in range(1, compute_alpha+1)]
+                self.nabla_alpha_list = [self._solver_alpha(self.eigfuncs[:, :, i])[0] for i in range(1, compute_alpha+1)]
             if nabla_V is None:
                 grad = np.gradient(potential(X, Y), self.dx, self.dy)
                 nabla_V = (grad[0], grad[1])
@@ -544,14 +550,16 @@ class SchrodingerControlSolver:
         c = np.linalg.solve(matrix, image)
 
         if self.dim == 1:
+            alpha = np.einsum('k,ik->i', c, self.eigfuncs) 
             nabla_alpha = np.einsum('k,ik->i', c, self.nabla_eigfuncs)
         else:
+            alpha = np.einsum('k,ijk->ij', c, self.eigfuncs)
             nabla_alpha_x = np.einsum('k,ijk->ij', c, self.nabla_eigfuncs[0])
             nabla_alpha_y = np.einsum('k,ijk->ij', c, self.nabla_eigfuncs[1])
 
-            return (nabla_alpha_x, nabla_alpha_y)
+            return (nabla_alpha_x, nabla_alpha_y), alpha
 
-        return nabla_alpha
+        return nabla_alpha, alpha
 
     def _project_to_basis(self, fvals):
         """
@@ -851,15 +859,26 @@ class SchrodingerControlSolver:
         B = self.Delta[:, 1:, 0].T
         K = self._solve_lqr_steady(A, B)
 
-        sol = solve_ivp(fun=lambda t, v: A @ v + B @ (-K@v), 
+        sol = solve_ivp(fun=lambda t, v: A @ v + B @ (-K@v),
                         t_span=(0, T),
-                        y0=self.a0[1:] - self.a_dag[1:], 
+                        y0=self.a0[1:] - self.a_dag[1:],
                         t_eval=time_eval,
                         rtol=1e-7, atol=1e-9)
         v_vals = sol.y.T
         u_vals = (-K @ v_vals.T).T
         u_list = [lambda t, arr=u_vals[:, i], te=time_eval: np.interp(t, te, arr, left=arr[0], right=arr[-1])
                   for i in range(self.m)]
+
+        sol = solve_ivp(
+            fun=lambda t, a: -self.eigvals * a + np.sum([u(t) * self.Delta[j].dot(a) for j, u in enumerate(u_list)], axis=0),
+            t_span=(0, T),
+            y0=self.a0,
+            t_eval=time_eval,
+            rtol=1e-7,
+            atol=1e-9,
+        )
+        v_vals = sol.y.T
+
         return u_list, u_vals, v_vals, K
 
     def compute_cost_functional(self, u_list, T, time_eval=None):
