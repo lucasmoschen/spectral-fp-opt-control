@@ -80,12 +80,11 @@ If this code contributes to your research, please cite:
 
 ```bibtex
 @article{kalise2025spectralfp,
-  title     = {A Spectral Approach to Optimal Control of the Fokker--Planck Equation},
-  author    = {Kalise, Dante and Moschen, Lucas M. and Pavliotis, Grigorios A. and Vaes, Urbain},
-  journal   = {IEEE Control Systems Letters},
-  year      = {2025},
-  note      = {Accepted, DOI to appear}
-}
+  author={Kalise, Dante and Moschen, Lucas M. and Pavliotis, Grigorios A. and Vaes, Urbain},
+  journal={IEEE Control Systems Letters}, 
+  title={A Spectral Approach to Optimal Control of the Fokker–Planck Equation}, 
+  year={2025},
+  doi={10.1109/LCSYS.2025.3573604}}
 ```
 
 ---
