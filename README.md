@@ -5,10 +5,9 @@ This repository accompanies the paper:
 
 **A Spectral Approach to Optimal Control of the Fokker–Planck Equation**  
 by Dante Kalise, Lucas M. Moschen, Grigorios A. Pavliotis, and Urbain Vaes  
-Accepted in *IEEE Control Systems Letters (L-CSS)*, 2025.  
-DOI to appear upon final publication.
+Accepted in *IEEE Control Systems Letters (L-CSS)*, 2025: [https://ieeexplore.ieee.org/document/11015582/](https://ieeexplore.ieee.org/document/11015582/)
 
-The ArXiV version is located [https://arxiv.org/abs/2503.15125](https://arxiv.org/abs/2503.15125).
+The ArXiV version is located [https://arxiv.org/abs/2503.15125](https://ieeexplore.ieee.org/document/11015582/).
 
 ---
 
