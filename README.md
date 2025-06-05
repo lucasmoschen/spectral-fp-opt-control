@@ -9,6 +9,8 @@ Accepted in *IEEE Control Systems Letters (L-CSS)*, 2025: [https://ieeexplore.ie
 
 The ArXiV version is located [https://arxiv.org/abs/2503.15125](https://ieeexplore.ieee.org/document/11015582/).
 
+To reproduce the examples, check the release with tag lcss2025-v1. 
+
 ---
 
 ## Overview
